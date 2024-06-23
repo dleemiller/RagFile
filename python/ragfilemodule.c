@@ -1,4 +1,3 @@
-#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <unistd.h>
 #include "../src/core/ragfile.h"
@@ -6,8 +5,9 @@
 #include "../src/algorithms/jaccard.h"
 #include "../src/algorithms/cosine.h"
 
-
+// Define types
 static PyTypeObject PyRagFileType;
+static PyTypeObject PyRagFileHeaderType;
 
 // RagFile header object
 typedef struct {
@@ -22,22 +22,33 @@ typedef struct {
     PyRagFileHeader* header;
 } PyRagFile;
 
-// Forward declaration of PyRagFileHeaderType
-static PyTypeObject PyRagFileHeaderType;
+// Forward declarations for header and file type deallocations
+static void PyRagFileHeader_dealloc(PyRagFileHeader* self);
+static void PyRagFile_dealloc(PyRagFile* self);
 
-// RagFile header deallocation
+// Initialize PyRagFile
+static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds);
+
+// Function declarations for module-level operations
+static PyObject* PyRagFile_from_RagFile(RagFile* rf);
+static PyObject* py_ragfile_load(PyObject* self, PyObject* args);
+static PyObject* py_ragfile_dump(PyObject* self, PyObject* args);
+static PyObject* py_ragfile_loads(PyObject* self, PyObject* args);
+static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args);
+
+// Deallocate PyRagFileHeader
 static void PyRagFileHeader_dealloc(PyRagFileHeader* self) {
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-// RagFile deallocation
+// Deallocate PyRagFile
 static void PyRagFile_dealloc(PyRagFile* self) {
     ragfile_free(self->rf);
     Py_XDECREF(self->header);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-// RagFile initialization
+// Initialize PyRagFile
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     const char* text = NULL;
     PyObject* token_ids_obj = NULL;
@@ -53,12 +64,9 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     }
 
     if (text == NULL && token_ids_obj == NULL && embedding_obj == NULL && metadata == NULL) {
-        // This is the case where the object is being created without initialization parameters,
-        // such as in the PyRagFile_from_RagFile function.
         return 0;
     }
 
-    // Convert token_ids to C array
     Py_ssize_t token_count = PyList_Size(token_ids_obj);
     uint32_t* token_ids = malloc(token_count * sizeof(uint32_t));
     if (token_ids == NULL) {
@@ -69,7 +77,6 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
         token_ids[i] = PyLong_AsUnsignedLong(PyList_GetItem(token_ids_obj, i));
     }
 
-    // Convert embedding to C array
     Py_ssize_t embedding_size = PyList_Size(embedding_obj);
     float* embedding = malloc(embedding_size * sizeof(float));
     if (embedding == NULL) {
@@ -93,7 +100,6 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
         return -1;
     }
 
-    // Create the header object
     self->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
     if (self->header == NULL) {
         return -1;
@@ -103,7 +109,7 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
-// Module-level functions
+// Function to create PyRagFile from RagFile
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     printf("Creating PyRagFile from RagFile\n");
     PyRagFile* py_rf = (PyRagFile*)PyObject_CallObject((PyObject*)&PyRagFileType, NULL);
@@ -127,6 +133,7 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     return (PyObject*)py_rf;
 }
 
+// Load RagFile from file object
 static PyObject* py_ragfile_load(PyObject* self, PyObject* args) {
     PyObject* file_obj;
     if (!PyArg_ParseTuple(args, "O", &file_obj)) {
@@ -157,6 +164,7 @@ static PyObject* py_ragfile_load(PyObject* self, PyObject* args) {
     return PyRagFile_from_RagFile(rf);
 }
 
+// Dump RagFile to file object
 static PyObject* py_ragfile_dump(PyObject* self, PyObject* args) {
     PyRagFile* py_rf;
     PyObject* file_obj;
@@ -192,7 +200,68 @@ static PyObject* py_ragfile_dump(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
-// RagFile methods
+// Load RagFile from string
+static PyObject* py_ragfile_loads(PyObject* self, PyObject* args) {
+    const char* data;
+    Py_ssize_t length;
+
+    if (!PyArg_ParseTuple(args, "s#", &data, &length)) {
+        return NULL;
+    }
+
+    FILE* file = fmemopen((void*)data, length, "rb");
+    if (file == NULL) {
+        PyErr_SetString(PyExc_IOError, "Failed to open memory buffer as file");
+        return NULL;
+    }
+
+    RagFile* rf;
+    RagfileError error = ragfile_load(&rf, file);
+    fclose(file);
+
+    if (error != RAGFILE_SUCCESS) {
+        PyErr_SetString(PyExc_IOError, "Failed to load RagFile from string");
+        return NULL;
+    }
+
+    return PyRagFile_from_RagFile(rf);
+}
+
+// Dump RagFile to string
+static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args) {
+    PyRagFile* py_rf;
+    if (!PyArg_ParseTuple(args, "O", &py_rf)) {
+        return NULL;
+    }
+
+    if (!PyObject_TypeCheck(py_rf, &PyRagFileType)) {
+        PyErr_SetString(PyExc_TypeError, "First argument must be a RagFile object");
+        return NULL;
+    }
+
+    char* buffer;
+    size_t size;
+    FILE* file = open_memstream(&buffer, &size);
+    if (file == NULL) {
+        PyErr_SetString(PyExc_IOError, "Failed to create memory buffer");
+        return NULL;
+    }
+
+    RagfileError error = ragfile_save(py_rf->rf, file);
+    fclose(file);
+
+    if (error != RAGFILE_SUCCESS) {
+        free(buffer);
+        PyErr_SetString(PyExc_IOError, "Failed to save RagFile to string");
+        return NULL;
+    }
+
+    PyObject* result = PyBytes_FromStringAndSize(buffer, size);
+    free(buffer);
+    return result;
+}
+
+// Methods for similarity calculations
 static PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
     if (!PyArg_ParseTuple(args, "O!", Py_TYPE(self), &other)) {
@@ -319,6 +388,8 @@ static PyTypeObject PyRagFileHeaderType = {
 static PyMethodDef ragfile_methods[] = {
     {"load", py_ragfile_load, METH_VARARGS, "Load a RagFile from a file"},
     {"dump", py_ragfile_dump, METH_VARARGS, "Save a RagFile to a file"},
+    {"loads", py_ragfile_loads, METH_VARARGS, "Load a RagFile from a string"},
+    {"dumps", py_ragfile_dumps, METH_VARARGS, "Save a RagFile to a string"},
     {NULL, NULL, 0, NULL}
 };
 
