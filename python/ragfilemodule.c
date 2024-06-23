@@ -39,17 +39,23 @@ static void PyRagFile_dealloc(PyRagFile* self) {
 
 // RagFile initialization
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
-    const char* text;
-    PyObject* token_ids_obj;
-    PyObject* embedding_obj;
+    const char* text = NULL;
+    PyObject* token_ids_obj = NULL;
+    PyObject* embedding_obj = NULL;
     const char* metadata = NULL;
-    uint16_t tokenizer_id_hash;
-    uint16_t embedding_id_hash;
-    uint16_t metadata_version;
+    uint16_t tokenizer_id_hash = 0;
+    uint16_t embedding_id_hash = 0;
+    uint16_t metadata_version = 0;
 
-    if (!PyArg_ParseTuple(args, "sOOsHHH", &text, &token_ids_obj, &embedding_obj, 
+    if (!PyArg_ParseTuple(args, "|sOOsHHH", &text, &token_ids_obj, &embedding_obj, 
                           &metadata, &tokenizer_id_hash, &embedding_id_hash, &metadata_version)) {
         return -1;
+    }
+
+    if (text == NULL && token_ids_obj == NULL && embedding_obj == NULL && metadata == NULL) {
+        // This is the case where the object is being created without initialization parameters,
+        // such as in the PyRagFile_from_RagFile function.
+        return 0;
     }
 
     // Convert token_ids to C array
@@ -99,21 +105,25 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
 
 // Module-level functions
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
+    printf("Creating PyRagFile from RagFile\n");
     PyRagFile* py_rf = (PyRagFile*)PyObject_CallObject((PyObject*)&PyRagFileType, NULL);
     if (py_rf == NULL) {
+        printf("Failed to create PyRagFile object\n");
         return NULL;
     }
 
     py_rf->rf = rf;
 
-    // Create the header object
+    printf("Creating PyRagFileHeader\n");
     py_rf->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
     if (py_rf->header == NULL) {
         Py_DECREF(py_rf);
+        printf("Failed to create PyRagFileHeader\n");
         return NULL;
     }
     py_rf->header->header = &(py_rf->rf->header);
 
+    printf("Successfully created PyRagFile object\n");
     return (PyObject*)py_rf;
 }
 
@@ -352,3 +362,4 @@ PyMODINIT_FUNC PyInit_ragfile(void) {
 
     return m;
 }
+

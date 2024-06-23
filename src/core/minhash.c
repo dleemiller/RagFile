@@ -45,6 +45,10 @@ uint64_t murmurhash3_64(const void* key, int len, uint32_t seed) {
 }
 
 MinHashError minhash_create(MinHash** mh, size_t num_hashes, uint32_t seed) {
+    if (!mh || num_hashes == 0) {
+        return MINHASH_ERROR_INVALID_ARGUMENT;
+    }
+
     *mh = (MinHash*)malloc(sizeof(MinHash));
     if (*mh == NULL) {
         return MINHASH_ERROR_MEMORY;
@@ -53,6 +57,7 @@ MinHashError minhash_create(MinHash** mh, size_t num_hashes, uint32_t seed) {
     (*mh)->signature = (uint64_t*)malloc(num_hashes * sizeof(uint64_t));
     if ((*mh)->signature == NULL) {
         free(*mh);
+        *mh = NULL;
         return MINHASH_ERROR_MEMORY;
     }
 
@@ -120,3 +125,4 @@ MinHashError minhash_clone(const MinHash* src, MinHash** dest) {
 
     return MINHASH_SUCCESS;
 }
+

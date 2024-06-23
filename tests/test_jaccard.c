@@ -8,9 +8,9 @@ void test_jaccard_similarity() {
     MinHash* mh2;
     MinHash* mh3;
     
-    assert(minhash_create(&mh1, 256, 42) == MINHASH_SUCCESS);
-    assert(minhash_create(&mh2, 256, 42) == MINHASH_SUCCESS);
-    assert(minhash_create(&mh3, 256, 42) == MINHASH_SUCCESS);
+    assert(minhash_create(&mh1, MINHASH_SIZE, 42) == MINHASH_SUCCESS);
+    assert(minhash_create(&mh2, MINHASH_SIZE, 42) == MINHASH_SUCCESS);
+    assert(minhash_create(&mh3, MINHASH_SIZE, 42) == MINHASH_SUCCESS);
     
     uint32_t tokens1[] = {1, 2, 3, 4, 5, 6, 7, 8};
     uint32_t tokens2[] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -20,9 +20,9 @@ void test_jaccard_similarity() {
     assert(minhash_compute_from_tokens(mh2, tokens2, 8, 3) == MINHASH_SUCCESS);
     assert(minhash_compute_from_tokens(mh3, tokens3, 8, 3) == MINHASH_SUCCESS);
     
-    float similarity1 = jaccard_similarity(mh1, mh2);
-    float similarity2 = jaccard_similarity(mh1, mh3);
-    float similarity3 = jaccard_similarity(mh1, mh1);
+    float similarity1 = jaccard_similarity(mh1->signature, mh2->signature);
+    float similarity2 = jaccard_similarity(mh1->signature, mh3->signature);
+    float similarity3 = jaccard_similarity(mh1->signature, mh1->signature);
     
     printf("Similarity between identical token sequences: %f\n", similarity1);
     printf("Similarity between reversed token sequences: %f\n", similarity2);
