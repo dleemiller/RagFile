@@ -1,1 +1,2 @@
-from .ragfile import RagFile, load, dump, loads, dumps
+from .ragfile import RagFile, dump, load, dumps, loads
+from .metadata import RagFileMetaV1

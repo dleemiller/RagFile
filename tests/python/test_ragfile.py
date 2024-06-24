@@ -1,5 +1,7 @@
 import unittest
 import ragfile
+from ragfile.metadata import RagFileMetaV1
+from functools import partial
 
 
 class TestRagFile(unittest.TestCase):
@@ -8,7 +10,14 @@ class TestRagFile(unittest.TestCase):
         self.text = "Sample text"
         self.token_ids = [1, 2, 3, 4]
         self.embedding = [0.1, 0.2, 0.3, 0.4]
-        self.metadata = "metadata"
+        self.create_metadata = partial(
+            RagFileMetaV1.serialize,
+            model_id="example_model_id",
+            tokenizer_id="example_tokenizer_id",
+            labels=[1, 2, 3, 4],
+            chunk_number=1,
+        )
+        self.metadata_content = self.create_metadata(source_text=self.text)
         self.tokenizer_id_hash = "some-huggingface/tokenizer_id"
         self.embedding_id_hash = "some/embedding_id_str"
         self.metadata_version = 1
@@ -17,7 +26,7 @@ class TestRagFile(unittest.TestCase):
             text=self.text,
             token_ids=self.token_ids,
             embedding=self.embedding,
-            metadata=self.metadata,
+            metadata=self.metadata_content,
             tokenizer_id=self.tokenizer_id_hash,
             embedding_id=self.embedding_id_hash,
             metadata_version=self.metadata_version,
@@ -31,7 +40,7 @@ class TestRagFile(unittest.TestCase):
     def test_create_ragfile(self):
         self.assertEqual(self.ragfile.text, self.text)
         self.assertListAlmostEqual(self.ragfile.embedding, self.embedding)
-        self.assertEqual(self.ragfile.metadata, self.metadata)
+        self.assertEqual(self.ragfile.metadata, self.metadata_content)
         self.assertEqual(self.ragfile.header.version, self.metadata_version)
 
     def test_dumps_and_loads(self):
@@ -40,8 +49,23 @@ class TestRagFile(unittest.TestCase):
 
         self.assertEqual(deserialized.text, self.text)
         self.assertListAlmostEqual(deserialized.embedding, self.embedding)
-        self.assertEqual(deserialized.metadata, self.metadata)
+        self.assertEqual(deserialized.metadata, self.metadata_content)
         self.assertEqual(deserialized.header.version, self.metadata_version)
+
+        deserialized_metadata = RagFileMetaV1.deserialize(deserialized.metadata)
+        self.assertEqual(
+            deserialized_metadata.model_id.decode("utf-8").rstrip(chr(0)),
+            "example_model_id",
+        )
+        self.assertEqual(
+            deserialized_metadata.tokenizer_id.decode("utf-8").rstrip(chr(0)),
+            "example_tokenizer_id",
+        )
+        self.assertEqual(list(deserialized_metadata.labels)[:4], [1, 2, 3, 4])
+        self.assertEqual(
+            deserialized_metadata.sourcefile_name.decode("utf-8").rstrip(chr(0)), ""
+        )
+        self.assertEqual(deserialized_metadata.chunk_number, 1)
 
     def test_load_and_dump_file(self):
         with open("test.rag", "wb") as f:
@@ -52,8 +76,23 @@ class TestRagFile(unittest.TestCase):
 
         self.assertEqual(loaded_ragfile.text, self.text)
         self.assertListAlmostEqual(loaded_ragfile.embedding, self.embedding)
-        self.assertEqual(loaded_ragfile.metadata, self.metadata)
+        self.assertEqual(loaded_ragfile.metadata, self.metadata_content)
         self.assertEqual(loaded_ragfile.header.version, self.metadata_version)
+
+        deserialized_metadata = RagFileMetaV1.deserialize(loaded_ragfile.metadata)
+        self.assertEqual(
+            deserialized_metadata.model_id.decode("utf-8").rstrip(chr(0)),
+            "example_model_id",
+        )
+        self.assertEqual(
+            deserialized_metadata.tokenizer_id.decode("utf-8").rstrip(chr(0)),
+            "example_tokenizer_id",
+        )
+        self.assertEqual(list(deserialized_metadata.labels)[:4], [1, 2, 3, 4])
+        self.assertEqual(
+            deserialized_metadata.sourcefile_name.decode("utf-8").rstrip(chr(0)), ""
+        )
+        self.assertEqual(deserialized_metadata.chunk_number, 1)
 
     def test_jaccard_similarity(self):
         serialized = ragfile.dumps(self.ragfile)
@@ -162,6 +201,12 @@ class TestRagFile(unittest.TestCase):
         )
         self.assertEqual(rf.text, large_text)
         self.assertEqual(len(rf.embedding), len(large_embedding))
+
+        serialized = ragfile.dumps(rf)
+        deserialized = ragfile.loads(serialized)
+
+        self.assertEqual(deserialized.text, large_text)
+        self.assertEqual(len(deserialized.embedding), len(large_embedding))
 
 
 if __name__ == "__main__":
