@@ -427,6 +427,18 @@ static PyObject* PyRagFileHeader_get_version(PyRagFileHeader* self, void* closur
     return PyLong_FromUnsignedLong(self->header->version);
 }
 
+static PyObject* PyRagFileHeader_get_tokenizer_hash(PyRagFileHeader* self, void* closure) {
+    return PyLong_FromUnsignedLong(self->header->tokenizer_id_hash);
+}
+
+static PyObject* PyRagFileHeader_get_embedding_hash(PyRagFileHeader* self, void* closure) {
+    return PyLong_FromUnsignedLong(self->header->embedding_id_hash);
+}
+
+static PyObject* PyRagFileHeader_get_embedding_size(PyRagFileHeader* self, void* closure) {
+    return PyLong_FromUnsignedLong(self->header->embedding_size);
+}
+
 static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, void* closure) {
     PyObject* signature = PyList_New(MINHASH_SIZE);
     if (signature == NULL) {
@@ -455,6 +467,9 @@ static PyGetSetDef PyRagFile_getsetters[] = {
 
 static PyGetSetDef PyRagFileHeader_getsetters[] = {
     {"version", (getter)PyRagFileHeader_get_version, NULL, "Get the version", NULL},
+    {"tokenizer_id_hash", (getter)PyRagFileHeader_get_tokenizer_hash, NULL, "Get the CRC 16 hash of the tokenzier id", NULL},
+    {"embedding_id_hash", (getter)PyRagFileHeader_get_embedding_hash, NULL, "Get the CRC 16 hash of the embedding id", NULL},
+    {"embedding_size", (getter)PyRagFileHeader_get_embedding_size, NULL, "Get the vector dimension of the embedding", NULL},
     {"minhash_signature", (getter)PyRagFileHeader_get_minhash_signature, NULL, "Get the MinHash signature", NULL},
     {NULL}  /* Sentinel */
 };
