@@ -59,11 +59,17 @@ rf = ragfile.RagFile(
     token_ids=[1, 2, 3, 4],  # token ids
     embedding=[0.1, 0.2, 0.3, 0.4],
     metadata=metadata,  # serialized metadata
-    tokenizer_id="123",
-    embedding_id="456",
+    tokenizer_id="some-tokenizer-identifier", # these ids must be used consistently across files
+    embedding_id="some-embedding-identifier", # use the same tokenizer/embedding models for all files
     metadata_version=1
 )
 ```
+
+Note that `tokenizer_id` and `embedding_id` are metadata that are hashed and validated when comparisons are made.
+They do not guarantee that you consistently used the same tokenizer and embedding.
+They must be matched between files for comparisons to be made, and are validated when using compare functions.
+When using scan() and query(), files created using different tokenizers and embedding models according to the ids will be skipped.
+
 
 ### Dumping and Loading RagFile
 
@@ -89,6 +95,11 @@ similarity_cosine = rf.cosine(loaded_rf)  # Cosine similarity of embedding
 
 ### Using Tokenizer Library
 
+This demonstrates using it with the tokenizer library to create embeddings.
+It is not required to use the token ids associated with the embedding with the minhashing algorithm in the ragfile.
+However, for any two files to be compared, you must use the same tokenizer across files and the same embedding model across files.
+The embedding id and tokenizer id will be used to record which tokenizer/embedding that was used, so ensure that your id strings are set consistently.
+
 ```
 from transformers import AutoTokenizer, AutoModel
 import torch
@@ -112,11 +123,11 @@ with torch.no_grad():
 
 # Create metadata
 metadata = RagFileMetaV1.serialize(
-    model_id="example_model_id",
-    tokenizer_id="example_tokenizer_id",
-    labels=[1, 2, 3, 4],
-    source_text=sentence,
-    chunk_number=1
+    model_id="sentence-transformers/all-MiniLM-L6-v2",
+    tokenizer_id="sentence-transformers/all-MiniLM-L6-v2",
+    labels=[1, 2, 3, 4],  # any labels (ints) to apply
+    source_text=sentence,  # only for computing sha256 hash
+    chunk_number=1  # record chunk number if chunking
 )
 
 # Create a RagFile object with tokenized data and generated embedding
