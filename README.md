@@ -1,8 +1,8 @@
 # RagFile
 
-RagFile is a Python package for using flat files to do RAG. The specification is a binary format with a header containing a minhash signature over tokens from a tokenizer. Using a coarse retrieval, the documents can then reranked using the stored embedding.
+RagFile is a Python package designed for using flat files to perform Retrieval-Augmented Generation (RAG). The specification involves a binary format with a header that contains a MinHash signature over tokens from a tokenizer. Using a coarse retrieval, the documents can then be re-ranked using the stored embedding.
 
-The purpose is to create a light, simple and fast interface for doing RAG, when vector stores and managing indexes are too heavy weight. This library aims to provide a load/dump style interface for storing files, and (TODO) implements query methods for for minhash/reranking hybrid search.
+The purpose of RagFile is to create a lightweight, simple, and fast interface for performing RAG when vector stores and managing indexes are too heavyweight. This library aims to provide a load/dump style interface for storing files and (TODO) implements query methods for a MinHash/reranking hybrid search.
 
 ## Features
 
@@ -10,8 +10,9 @@ The purpose is to create a light, simple and fast interface for doing RAG, when 
 - Load and dump RagFile objects from and to files and strings.
 - Compute Jaccard and Cosine similarities between RagFile objects.
 - Efficient MinHash implementation for similarity measures.
--------
-TODO:
+
+## TODO
+
 - Implement query and scan functions
 
 ## Installation
@@ -40,13 +41,13 @@ python setup.py install
 import ragfile
 
 rf = ragfile.RagFile(
-    text = "Sample text",
-    token_ids = [1, 2, 3, 4],  # token ids
-    embedding = [0.1, 0.2, 0.3, 0.4],
-    metadata = "metadata",  # serialized metatadata
-    123,
-    456,
-    1
+    text="Sample text",
+    token_ids=[1, 2, 3, 4],  # token ids
+    embedding=[0.1, 0.2, 0.3, 0.4],
+    metadata="metadata",  # serialized metadata
+    tokenizer_id="123",
+    embedding_id="456",
+    metadata_version=1
 )
 ```
 
@@ -68,8 +69,8 @@ loaded_rf = ragfile.loads(rf_string)
 ### Computing Similarities
 
 ```
-similarity_jaccard = rf.jaccard(loaded_rf)  # minHash similarity score
-similarity_cosine = rf.cosine(loaded_rf)  # cosine similarity of embedding
+similarity_jaccard = rf.jaccard(loaded_rf)  # MinHash similarity score
+similarity_cosine = rf.cosine(loaded_rf)  # Cosine similarity of embedding
 ```
 
 ## Contributing
