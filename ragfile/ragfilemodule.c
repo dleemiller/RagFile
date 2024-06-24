@@ -51,69 +51,171 @@ static void PyRagFile_dealloc(PyRagFile* self) {
 
 // Initialize PyRagFile
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
+    printf("Entering PyRagFile_init\n");
+
     const char* text = NULL;
     PyObject* token_ids_obj = NULL;
     PyObject* embedding_obj = NULL;
     const char* metadata = NULL;
+    PyObject* tokenizer_id_obj = NULL;
+    PyObject* embedding_id_obj = NULL;
+    uint16_t metadata_version = 0;
+    int is_loaded = 0;
+
+    static char* kwlist[] = {"text", "token_ids", "embedding", "metadata", "tokenizer_id", "embedding_id", "metadata_version", "is_loaded", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sOOsOOHi", kwlist, &text, &token_ids_obj, &embedding_obj, &metadata, &tokenizer_id_obj, &embedding_id_obj, &metadata_version, &is_loaded)) {
+        printf("Failed to parse arguments\n");
+        return -1;
+    }
+
+    // Check required arguments if not loaded
+    if (!is_loaded && (text == NULL || token_ids_obj == NULL || embedding_obj == NULL || tokenizer_id_obj == NULL || embedding_id_obj == NULL)) {
+        PyErr_SetString(PyExc_ValueError, "Missing required arguments: text, token_ids, embedding, tokenizer_id, and embedding_id are required");
+        return -1;
+    }
+
+    // Validate the types of token_ids and embedding if not loaded
+    if (!is_loaded && token_ids_obj && !PyList_Check(token_ids_obj)) {
+        PyErr_SetString(PyExc_TypeError, "token_ids must be a list");
+        return -1;
+    }
+
+    if (!is_loaded && embedding_obj && !PyList_Check(embedding_obj)) {
+        PyErr_SetString(PyExc_TypeError, "embedding must be a list");
+        return -1;
+    }
+
+    // Validate that token_ids are integers if not loaded
+    if (!is_loaded && token_ids_obj) {
+        Py_ssize_t token_count = PyList_Size(token_ids_obj);
+        for (Py_ssize_t i = 0; i < token_count; i++) {
+            if (!PyLong_Check(PyList_GetItem(token_ids_obj, i))) {
+                PyErr_SetString(PyExc_TypeError, "token_ids must be a list of integers");
+                return -1;
+            }
+        }
+    }
+
+    // Validate that embedding are floats if not loaded
+    if (!is_loaded && embedding_obj) {
+        Py_ssize_t embedding_size = PyList_Size(embedding_obj);
+        for (Py_ssize_t i = 0; i < embedding_size; i++) {
+            if (!PyFloat_Check(PyList_GetItem(embedding_obj, i))) {
+                PyErr_SetString(PyExc_TypeError, "embedding must be a list of floats");
+                return -1;
+            }
+        }
+    }
+
+    // Validate the length of token_ids if not loaded
+    if (!is_loaded && PyList_Size(token_ids_obj) < 3) {
+        PyErr_SetString(PyExc_ValueError, "token_ids must contain at least 3 elements for the MinHash algorithm to work");
+        return -1;
+    }
+
+    // Initialize with zeros to avoid uninitialized memory issues
     uint16_t tokenizer_id_hash = 0;
     uint16_t embedding_id_hash = 0;
-    uint16_t metadata_version = 0;
 
-    if (!PyArg_ParseTuple(args, "|sOOsHHH", &text, &token_ids_obj, &embedding_obj, 
-                          &metadata, &tokenizer_id_hash, &embedding_id_hash, &metadata_version)) {
-        return -1;
+    if (tokenizer_id_obj) {
+        if (PyUnicode_Check(tokenizer_id_obj)) {
+            const char* tokenizer_id_str = PyUnicode_AsUTF8(tokenizer_id_obj);
+            tokenizer_id_hash = ragfile_compute_id_hash(tokenizer_id_str);
+        } else if (PyLong_Check(tokenizer_id_obj)) {
+            tokenizer_id_hash = (uint16_t)PyLong_AsUnsignedLong(tokenizer_id_obj);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "tokenizer_id must be a string or an integer");
+            printf("Invalid tokenizer_id type\n");
+            return -1;
+        }
     }
 
-    if (text == NULL && token_ids_obj == NULL && embedding_obj == NULL && metadata == NULL) {
-        return 0;
+    if (embedding_id_obj) {
+        if (PyUnicode_Check(embedding_id_obj)) {
+            const char* embedding_id_str = PyUnicode_AsUTF8(embedding_id_obj);
+            embedding_id_hash = ragfile_compute_id_hash(embedding_id_str);
+        } else if (PyLong_Check(embedding_id_obj)) {
+            embedding_id_hash = (uint16_t)PyLong_AsUnsignedLong(embedding_id_obj);
+        } else {
+            PyErr_SetString(PyExc_TypeError, "embedding_id must be a string or an integer");
+            printf("Invalid embedding_id type\n");
+            return -1;
+        }
     }
 
-    Py_ssize_t token_count = PyList_Size(token_ids_obj);
-    uint32_t* token_ids = malloc(token_count * sizeof(uint32_t));
-    if (token_ids == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    for (Py_ssize_t i = 0; i < token_count; i++) {
-        token_ids[i] = PyLong_AsUnsignedLong(PyList_GetItem(token_ids_obj, i));
-    }
+    printf("tokenizer_id_hash: %u, embedding_id_hash: %u\n", tokenizer_id_hash, embedding_id_hash);
 
-    Py_ssize_t embedding_size = PyList_Size(embedding_obj);
-    float* embedding = malloc(embedding_size * sizeof(float));
-    if (embedding == NULL) {
+    if (!is_loaded) {
+        Py_ssize_t token_count = PyList_Size(token_ids_obj);
+        uint32_t* token_ids = malloc(token_count * sizeof(uint32_t));
+        if (token_ids == NULL) {
+            PyErr_NoMemory();
+            printf("Failed to allocate memory for token_ids\n");
+            return -1;
+        }
+        for (Py_ssize_t i = 0; i < token_count; i++) {
+            token_ids[i] = PyLong_AsUnsignedLong(PyList_GetItem(token_ids_obj, i));
+        }
+
+        Py_ssize_t embedding_size = PyList_Size(embedding_obj);
+        float* embedding = malloc(embedding_size * sizeof(float));
+        if (embedding == NULL) {
+            free(token_ids);
+            PyErr_NoMemory();
+            printf("Failed to allocate memory for embedding\n");
+            return -1;
+        }
+        for (Py_ssize_t i = 0; i < embedding_size; i++) {
+            embedding[i] = (float)PyFloat_AsDouble(PyList_GetItem(embedding_obj, i));
+        }
+
+        RagfileError error = ragfile_create(&self->rf, text, token_ids, token_count, 
+                                            embedding, embedding_size, metadata, 
+                                            tokenizer_id_hash, embedding_id_hash, metadata_version);
+
         free(token_ids);
-        PyErr_NoMemory();
-        return -1;
-    }
-    for (Py_ssize_t i = 0; i < embedding_size; i++) {
-        embedding[i] = (float)PyFloat_AsDouble(PyList_GetItem(embedding_obj, i));
-    }
+        free(embedding);
 
-    RagfileError error = ragfile_create(&self->rf, text, token_ids, token_count, 
-                                        embedding, embedding_size, metadata, 
-                                        tokenizer_id_hash, embedding_id_hash, metadata_version);
-
-    free(token_ids);
-    free(embedding);
-
-    if (error != RAGFILE_SUCCESS) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create RagFile");
-        return -1;
+        if (error != RAGFILE_SUCCESS) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create RagFile");
+            printf("Failed to create RagFile\n");
+            return -1;
+        }
     }
 
-    self->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
+    // Check and initialize header properly
     if (self->header == NULL) {
-        return -1;
+        self->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
+        if (self->header == NULL) {
+            printf("Failed to create PyRagFileHeader\n");
+            return -1;
+        }
     }
     self->header->header = &(self->rf->header);
+
+    printf("PyRagFile initialized with tokenizer_id_hash: %u and embedding_id_hash: %u\n",
+           tokenizer_id_hash, embedding_id_hash);
 
     return 0;
 }
 
-// Function to create PyRagFile from RagFile
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     printf("Creating PyRagFile from RagFile\n");
-    PyRagFile* py_rf = (PyRagFile*)PyObject_CallObject((PyObject*)&PyRagFileType, NULL);
+
+    if (rf == NULL) {
+        printf("Error: RagFile is NULL\n");
+        return NULL;
+    }
+
+    PyObject* py_rf_args = Py_BuildValue("()");  // Empty args
+    PyObject* py_rf_kw = Py_BuildValue("{s:i}", "is_loaded", 1);  // Keyword arguments with is_loaded flag
+
+    PyRagFile* py_rf = (PyRagFile*)PyObject_Call((PyObject*)&PyRagFileType, py_rf_args, py_rf_kw);
+
+    Py_DECREF(py_rf_args);
+    Py_DECREF(py_rf_kw);
+
     if (py_rf == NULL) {
         printf("Failed to create PyRagFile object\n");
         return NULL;
