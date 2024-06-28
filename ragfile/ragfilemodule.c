@@ -395,18 +395,19 @@ static PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
 }
 
 // Scanning
-static PyObject* PyRagFile_match(PyObject* self, PyObject* args) {
+static PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
     PyObject* file_iter;
-    RagFile* referenceRagFile;
     unsigned int top_k;
 
-    // Parse Python arguments: the RagFile object, file iterator, and top_k value
-    if (!PyArg_ParseTuple(args, "OOI", &referenceRagFile, &file_iter, &top_k)) {
+    static char *kwlist[] = {"file_iter", "top_k", NULL};
+
+    // Parse Python keyword arguments
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OI", kwlist, &file_iter, &top_k)) {
         return NULL;
     }
 
     if (!PyIter_Check(file_iter)) {
-        PyErr_SetString(PyExc_TypeError, "The second argument must be an iterator");
+        PyErr_SetString(PyExc_TypeError, "file_iter must be an iterator");
         return NULL;
     }
 
@@ -417,59 +418,60 @@ static PyObject* PyRagFile_match(PyObject* self, PyObject* args) {
 
     MinHeap* heap = create_min_heap(top_k);
     if (heap == NULL) {
-        return PyErr_NoMemory();
+        PyErr_SetString(PyExc_MemoryError, "Failed to create a heap");
+        return NULL;
     }
 
-    // Process each file from the iterator
     PyObject* file_path;
     while ((file_path = PyIter_Next(file_iter)) != NULL) {
         const char* path = PyUnicode_AsUTF8(file_path);
         if (path == NULL) {
+            PyErr_Format(PyExc_ValueError, "Invalid file path encountered");
             Py_DECREF(file_path);
-            continue;  // Skip this file if path conversion fails
+            continue;
         }
-        if (process_file(path, referenceRagFile, heap) != 0) {
-            Py_DECREF(file_path);
-            free_min_heap(heap);
-            return NULL;  // Process file failed, cleanup and return error
-        }
+
+        int process_status = process_file(path, self->rf, heap);
         Py_DECREF(file_path);
+        if (process_status != 0) {
+            PyErr_SetString(PyExc_RuntimeError, "File processing failed");
+            free_min_heap(heap);
+            return NULL;
+        }
     }
 
-    // Convert the heap to a sorted Python list of dictionaries
     PyObject* result_list = PyList_New(0);
     if (result_list == NULL) {
         free_min_heap(heap);
-        return PyErr_NoMemory();
+        PyErr_SetString(PyExc_MemoryError, "Failed to create list");
+        return NULL;
     }
 
-    // Extract items from the heap and fill the result list
-    for (int i = 0; i < heap->size; i++) {
-        PyObject* dict = Py_BuildValue("{s:s, s:f}",
-                                       "file", heap->heap[i].path,
-                                       "jaccard", heap->heap[i].score);
-        if (dict == NULL) {
+    // Extract elements from the heap and append them to the Python list
+    while (heap->size > 0) {
+        FileScore min_score = heap->heap[0];  // Get the root, which has the minimum score
+        PyObject* dict = Py_BuildValue("{s:s, s:f}", "file", min_score.path, "jaccard", min_score.score);
+        if (PyList_Append(result_list, dict) == -1) {
+            Py_XDECREF(dict);
             Py_DECREF(result_list);
             free_min_heap(heap);
-            return PyErr_NoMemory();
+            PyErr_SetString(PyExc_MemoryError, "Failed to append to list");
+            return NULL;
         }
-        PyList_Append(result_list, dict);  // Appending directly, no need for separate sorting step
         Py_DECREF(dict);
+        remove_root(heap);  // Remove the root to get the next item
     }
 
-    // The heap might not be fully sorted so we need to sort the result list now
-    // We sort based on the "jaccard" key in descending order using a Python lambda
-    PyObject* sorted_list = PyObject_CallMethod(result_list, "sorted", "(O)", Py_BuildValue("{s:s}", "key", "lambda x: x['jaccard']"));
-    Py_DECREF(result_list);  // We no longer need the original list
-    if (sorted_list == NULL) {
+    // Now reverse the list to get it in descending order of score
+    if (PyList_Reverse(result_list) == -1) {
+        Py_DECREF(result_list);
         free_min_heap(heap);
-        return PyErr_NoMemory();  // In case sorting failed
+        PyErr_SetString(PyExc_RuntimeError, "Failed to reverse the list");
+        return NULL;
     }
-
-    PyList_Reverse(sorted_list);  // Reverse to get descending order
 
     free_min_heap(heap);
-    return sorted_list;
+    return result_list;
 }
 
 // Getter methods for RagFile
@@ -534,7 +536,7 @@ static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, vo
 static PyMethodDef PyRagFile_methods[] = {
     {"jaccard", (PyCFunction)PyRagFile_jaccard, METH_VARARGS, "Compute Jaccard similarity with another RagFile"},
     {"cosine", (PyCFunction)PyRagFile_cosine, METH_VARARGS, "Compute Cosine similarity with another RagFile"},
-    {"match", (PyCFunction)PyRagFile_match, METH_VARARGS, "Find matches in a directory using jaccard similarity"},
+    {"match", (PyCFunction)PyRagFile_match, METH_VARARGS | METH_KEYWORDS, "Find matches in a directory using Jaccard similarity"},
     {NULL}  /* Sentinel */
 };
 

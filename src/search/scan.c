@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "scan.h"
+#include "heap.h"
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
 #include "../algorithms/jaccard.h"

@@ -13,7 +13,9 @@ class SplittingStrategy:
 
 
 class TextChunker:
-    def __init__(self, strategy, chunk_size=256, step_size=128):
+    def __init__(
+        self, strategy: SplittingStrategy, chunk_size: int = 256, step_size: int = 128
+    ):
         self.chunk_size = chunk_size
         self.step_size = step_size
         self._compile_regex()
