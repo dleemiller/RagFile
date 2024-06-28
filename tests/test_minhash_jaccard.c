@@ -59,7 +59,7 @@ void test_minhash_merge() {
     minhash_compute_from_tokens(mh1, tokens1, 4, 2);
     minhash_compute_from_tokens(mh2, tokens2, 4, 2);
     
-    memcpy(mh_merged->signature, mh1->signature, MINHASH_SIZE * sizeof(uint64_t));
+    memcpy(mh_merged->signature, mh1->signature, MINHASH_SIZE * sizeof(uint32_t));
     assert(minhash_merge(mh_merged, mh2) == MINHASH_SUCCESS);
     
     float similarity1 = jaccard_similarity(mh1->signature, mh_merged->signature);

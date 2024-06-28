@@ -2,10 +2,11 @@
 #include <string.h>
 #include "ragfile.h"
 #include "minhash.h"
+#include "../include/config.h"
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
 
-RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint64_t* minhash_signature) {
+RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature) {
     if (!token_ids || !minhash_signature || token_count == 0) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
@@ -21,7 +22,7 @@ RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_cou
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
-    memcpy(minhash_signature, mh->signature, MINHASH_SIZE * sizeof(uint64_t));
+    memcpy(minhash_signature, mh->signature, MINHASH_SIZE * sizeof(uint32_t));
 
     minhash_free(mh);
     return RAGFILE_SUCCESS;

@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <unistd.h>
+#include "../src/include/config.h"
 #include "../src/core/ragfile.h"
 #include "../src/core/minhash.h"
 #include "../src/algorithms/jaccard.h"

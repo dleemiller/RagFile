@@ -13,6 +13,6 @@
  * @param size Size of the MinHash signatures.
  * @return The computed Jaccard similarity (between 0 and 1).
  */
-float jaccard_similarity(const uint64_t* mh1, const uint64_t* mh2);
+float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2);
 
 #endif // JACCARD_H

@@ -1,6 +1,7 @@
+#include "../include/config.h"
 #include "jaccard.h"
 
-float jaccard_similarity(const uint64_t* mh1, const uint64_t* mh2) {
+float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2) {
     if (!mh1 || !mh2) {
         return 0.0f;
     }

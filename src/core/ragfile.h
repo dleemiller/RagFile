@@ -25,7 +25,7 @@ typedef struct {
     uint16_t tokenizer_id_hash;
     uint16_t embedding_id_hash;
     uint16_t metadata_version;
-    uint64_t minhash_signature[MINHASH_SIZE];
+    uint32_t minhash_signature[MINHASH_SIZE];
 } RagfileHeader;
 
 typedef struct {
@@ -95,6 +95,6 @@ uint16_t ragfile_compute_id_hash(const char* id_string);
  * @param minhash_signature Pointer to an array where the MinHash signature will be stored.
  * @return RAGFILE_SUCCESS on success, or an error code on failure.
  */
-RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint64_t* minhash_signature);
+RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature);
 
 #endif // RAGFILE_H

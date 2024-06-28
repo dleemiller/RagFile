@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include "../src/include/config.h"
 #include "../src/core/minhash.h"
 #include "../src/algorithms/jaccard.h"
 
