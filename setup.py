@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 module = Extension(
-    "ragfile.ragfilemodule",  # Name of the module
+    "ragfile.ragfile",
     sources=[
         "ragfile/ragfilemodule.c",  # Python binding source file
         "src/core/ragfile.c",
