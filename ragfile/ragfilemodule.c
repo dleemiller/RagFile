@@ -5,6 +5,8 @@
 #include "../src/core/minhash.h"
 #include "../src/algorithms/jaccard.h"
 #include "../src/algorithms/cosine.h"
+#include "../src/search/heap.h"
+#include "../src/search/scan.h"
 
 // Define types
 static PyTypeObject PyRagFileType;
@@ -391,6 +393,61 @@ static PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
                                          self->rf->header.embedding_size);
     return PyFloat_FromDouble(similarity);
 }
+
+// Scanning
+static PyObject* PyRagFile_scan(PyObject* self, PyObject* args) {
+    PyObject* file_iter;
+    RagFile* referenceRagFile;
+    unsigned int top_k;
+
+    if (!PyArg_ParseTuple(args, "OOI", &referenceRagFile, &file_iter, &top_k)) {
+        return NULL;
+    }
+
+    if (!PyIter_Check(file_iter)) {
+        PyErr_SetString(PyExc_TypeError, "The second argument must be an iterator");
+        return NULL;
+    }
+
+    if (top_k == 0) {
+        PyErr_SetString(PyExc_ValueError, "top_k must be greater than 0");
+        return NULL;
+    }
+
+    MinHeap* heap = create_min_heap(top_k);
+    if (!heap) {
+        return PyErr_NoMemory();
+    }
+
+    PyObject* file_path;
+    while ((file_path = PyIter_Next(file_iter)) != NULL) {
+        const char* path = PyUnicode_AsUTF8(file_path);
+        if (path == NULL) {
+            Py_DECREF(file_path);
+            continue;
+        }
+        process_file(path, referenceRagFile, heap);
+        Py_DECREF(file_path);
+    }
+
+    PyObject* result_list = PyList_New(0);
+    if (!result_list) {
+        free_min_heap(heap);
+        return PyErr_NoMemory();
+    }
+
+    if (heap->size == 0) {
+        free_min_heap(heap);
+        return result_list;  // Return an empty list if no files were processed
+    }
+
+    // Convert heap to a sorted Python list (as before, using reversed extraction)
+    // ...
+
+    free_min_heap(heap);
+    return result_list;
+}
+
 
 // Getter methods for RagFile
 

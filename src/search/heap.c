@@ -11,17 +11,34 @@ void swap(FileScore *x, FileScore *y) {
 }
 
 void heapify_down(MinHeap* minHeap, int i) {
-    int l = left(i);
-    int r = right(i);
+    int leftChild = 2 * i + 1;
+    int rightChild = 2 * i + 2;
     int smallest = i;
-    if (l < minHeap->size && minHeap->heap[l].score < minHeap->heap[i].score)
-        smallest = l;
-    if (r < minHeap->size && minHeap->heap[r].score < minHeap->heap[smallest].score)
-        smallest = r;
+
+    if (leftChild < minHeap->size && minHeap->heap[leftChild].score < minHeap->heap[smallest].score) {
+        smallest = leftChild;
+    }
+    if (rightChild < minHeap->size && minHeap->heap[rightChild].score < minHeap->heap[smallest].score) {
+        smallest = rightChild;
+    }
     if (smallest != i) {
-        swap(&minHeap->heap[i], &minHeap->heap[smallest]);
+        FileScore temp = minHeap->heap[i];
+        minHeap->heap[i] = minHeap->heap[smallest];
+        minHeap->heap[smallest] = temp;
         heapify_down(minHeap, smallest);
     }
+}
+
+void remove_root(MinHeap* minHeap) {
+    if (minHeap->size == 0)
+        return;
+
+    free(minHeap->heap[0].path);  // Free the memory allocated for the path
+
+    // Move the last element to root and reduce the size
+    minHeap->heap[0] = minHeap->heap[minHeap->size - 1];
+    minHeap->size--;
+    heapify_down(minHeap, 0);
 }
 
 void heapify_up(MinHeap* minHeap, int i) {

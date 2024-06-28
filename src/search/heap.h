@@ -1,3 +1,4 @@
+// heap.h
 #ifndef HEAP_H
 #define HEAP_H
 
@@ -18,6 +19,7 @@ typedef struct {
 // Function declarations
 MinHeap* create_min_heap(int capacity);
 void add_to_heap(MinHeap* minHeap, FileScore fileScore);
+void remove_root(MinHeap* minHeap);
 void free_min_heap(MinHeap* minHeap);
 
 #endif // HEAP_H
