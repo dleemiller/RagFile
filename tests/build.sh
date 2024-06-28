@@ -25,7 +25,7 @@ compile_and_run test_ragfile ../src/core/ragfile.c ../src/core/minhash.c ../src/
 compile_and_run test_jaccard ../src/core/minhash.c ../src/algorithms/jaccard.c test_jaccard.c
 compile_and_run test_minhash_jaccard ../src/core/minhash.c ../src/algorithms/jaccard.c test_minhash_jaccard.c
 compile_and_run test_cosine ../src/algorithms/cosine.c test_cosine.c
-compile_and_run test_heap ../src/search/heap.c test_heap.c
+compile_and_run test_heap ../src/search/heap.c ../src/utils/strdup.h test_heap.c
 compile_and_run test_scan ../src/search/scan.c ../src/search/heap.c ../src/core/ragfile.c ../src/core/minhash.c ../src/utils/file_io.c ../src/algorithms/jaccard.c test_scan.c
 
 echo "All tests completed."

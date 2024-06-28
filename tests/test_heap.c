@@ -2,15 +2,8 @@
 #include <assert.h>
 #include <time.h>
 #include "../src/search/heap.h"
+#include "../src/utils/strdup.h"
 
-char* strdup(const char* str) {
-    size_t len = strlen(str) + 1;    // Include space for the null-terminator
-    char* copy = malloc(len);
-    if (copy) {
-        memcpy(copy, str, len);
-    }
-    return copy;
-}
 
 void test_heap_basic_operations() {
     MinHeap* heap = create_min_heap(5);

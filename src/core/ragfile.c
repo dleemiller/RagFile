@@ -1,8 +1,9 @@
+#include <stdlib.h>
+#include <string.h>
 #include "ragfile.h"
 #include "minhash.h"
 #include "../utils/file_io.h"
-#include <stdlib.h>
-#include <string.h>
+#include "../utils/strdup.h"
 
 RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint64_t* minhash_signature) {
     if (!token_ids || !minhash_signature || token_count == 0) {
