@@ -16,12 +16,20 @@ void test_ragfile_create_save_load() {
                           ragfile_compute_id_hash("test_embedding"),
                           1) == RAGFILE_SUCCESS);
     
-    assert(ragfile_save(rf, "test_ragfile.rag") == RAGFILE_SUCCESS);
+    // Open file for writing
+    FILE *file = fopen("test_ragfile.rag", "wb");
+    assert(file != NULL && "Failed to open file for writing");
+    assert(ragfile_save(rf, file) == RAGFILE_SUCCESS);
+    fclose(file); // Close the file after saving
     
     RagFile* loaded_rf;
-    assert(ragfile_load(&loaded_rf, "test_ragfile.rag") == RAGFILE_SUCCESS);
+    // Open file for reading
+    file = fopen("test_ragfile.rag", "rb");
+    assert(file != NULL && "Failed to open file for reading");
+    assert(ragfile_load(&loaded_rf, file) == RAGFILE_SUCCESS);
+    fclose(file); // Close the file after loading
     
-    //assert(loaded_rf->header.minhash_size == 256);
+    // Assertions to check loaded data
     assert(loaded_rf->header.embedding_size == 4);
     assert(loaded_rf->header.metadata_size == strlen(metadata));
     assert(strcmp(loaded_rf->metadata, metadata) == 0);
@@ -54,3 +62,4 @@ int main() {
     printf("All RagFile tests passed!\n");
     return 0;
 }
+
