@@ -5,16 +5,25 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 module = Extension(
-    "ragfile.ragfile",
+    "ragfile.ragfilemodule",  # Name of the module
     sources=[
-        "ragfile/ragfilemodule.c",
+        "ragfile/ragfilemodule.c",  # Python binding source file
         "src/core/ragfile.c",
         "src/core/minhash.c",
         "src/algorithms/jaccard.c",
         "src/algorithms/cosine.c",
         "src/utils/file_io.c",
+        "src/search/heap.c",
+        "src/search/scan.c",
     ],
-    include_dirs=["src/include"],
+    include_dirs=[
+        "src/include",
+        "src/core",
+        "src/algorithms",
+        "src/search",
+        "src/utils"
+    ],
+    extra_compile_args=['-std=c11'],  # Ensuring C11 standard is used
 )
 
 setup(
@@ -22,10 +31,10 @@ setup(
     version="0.1.0",
     author="D. Lee Miller",
     author_email="dleemiller@gmail.com",
-    description="File format for flat file RAG",
+    description="A Python module for handling RAG files with native C extensions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/ragfile",
+    url="https://github.com/dleemiller/RagFile",
     packages=find_packages(),
     ext_modules=[module],
     classifiers=[
@@ -39,7 +48,6 @@ setup(
     ],
     python_requires=">=3.6",
     install_requires=[
-        # Add any additional dependencies here
     ],
     extras_require={
         "dev": [
@@ -50,14 +58,15 @@ setup(
         ],
     },
     package_data={
-        "ragfile": ["ragfilemodule.c"],
+        "ragfile": ["*"],
     },
     data_files=[
         ("", ["LICENSE", "README.md"]),
     ],
     entry_points={
         "console_scripts": [
-            # Add command line scripts here
         ],
     },
 )
+
+

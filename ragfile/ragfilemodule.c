@@ -395,11 +395,12 @@ static PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
 }
 
 // Scanning
-static PyObject* PyRagFile_scan(PyObject* self, PyObject* args) {
+static PyObject* PyRagFile_match(PyObject* self, PyObject* args) {
     PyObject* file_iter;
     RagFile* referenceRagFile;
     unsigned int top_k;
 
+    // Parse Python arguments: the RagFile object, file iterator, and top_k value
     if (!PyArg_ParseTuple(args, "OOI", &referenceRagFile, &file_iter, &top_k)) {
         return NULL;
     }
@@ -415,39 +416,61 @@ static PyObject* PyRagFile_scan(PyObject* self, PyObject* args) {
     }
 
     MinHeap* heap = create_min_heap(top_k);
-    if (!heap) {
+    if (heap == NULL) {
         return PyErr_NoMemory();
     }
 
+    // Process each file from the iterator
     PyObject* file_path;
     while ((file_path = PyIter_Next(file_iter)) != NULL) {
         const char* path = PyUnicode_AsUTF8(file_path);
         if (path == NULL) {
             Py_DECREF(file_path);
-            continue;
+            continue;  // Skip this file if path conversion fails
         }
-        process_file(path, referenceRagFile, heap);
+        if (process_file(path, referenceRagFile, heap) != 0) {
+            Py_DECREF(file_path);
+            free_min_heap(heap);
+            return NULL;  // Process file failed, cleanup and return error
+        }
         Py_DECREF(file_path);
     }
 
+    // Convert the heap to a sorted Python list of dictionaries
     PyObject* result_list = PyList_New(0);
-    if (!result_list) {
+    if (result_list == NULL) {
         free_min_heap(heap);
         return PyErr_NoMemory();
     }
 
-    if (heap->size == 0) {
-        free_min_heap(heap);
-        return result_list;  // Return an empty list if no files were processed
+    // Extract items from the heap and fill the result list
+    for (int i = 0; i < heap->size; i++) {
+        PyObject* dict = Py_BuildValue("{s:s, s:f}",
+                                       "file", heap->heap[i].path,
+                                       "jaccard", heap->heap[i].score);
+        if (dict == NULL) {
+            Py_DECREF(result_list);
+            free_min_heap(heap);
+            return PyErr_NoMemory();
+        }
+        PyList_Append(result_list, dict);  // Appending directly, no need for separate sorting step
+        Py_DECREF(dict);
     }
 
-    // Convert heap to a sorted Python list (as before, using reversed extraction)
-    // ...
+    // The heap might not be fully sorted so we need to sort the result list now
+    // We sort based on the "jaccard" key in descending order using a Python lambda
+    PyObject* sorted_list = PyObject_CallMethod(result_list, "sorted", "(O)", Py_BuildValue("{s:s}", "key", "lambda x: x['jaccard']"));
+    Py_DECREF(result_list);  // We no longer need the original list
+    if (sorted_list == NULL) {
+        free_min_heap(heap);
+        return PyErr_NoMemory();  // In case sorting failed
+    }
+
+    PyList_Reverse(sorted_list);  // Reverse to get descending order
 
     free_min_heap(heap);
-    return result_list;
+    return sorted_list;
 }
-
 
 // Getter methods for RagFile
 
@@ -511,6 +534,7 @@ static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, vo
 static PyMethodDef PyRagFile_methods[] = {
     {"jaccard", (PyCFunction)PyRagFile_jaccard, METH_VARARGS, "Compute Jaccard similarity with another RagFile"},
     {"cosine", (PyCFunction)PyRagFile_cosine, METH_VARARGS, "Compute Cosine similarity with another RagFile"},
+    {"match", (PyCFunction)PyRagFile_match, METH_VARARGS, "Find matches in a directory using jaccard similarity"},
     {NULL}  /* Sentinel */
 };
 
