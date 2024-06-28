@@ -2,16 +2,8 @@
 #include <string.h>
 #include "scan.h"
 #include "../utils/file_io.h"
+#include "../utils/strdup.h"
 #include "../algorithms/jaccard.h"
-
-char* strdup(const char* str) {
-    size_t len = strlen(str) + 1;    // Include space for the null-terminator
-    char* copy = malloc(len);
-    if (copy) {
-        memcpy(copy, str, len);
-    }
-    return copy;
-}
 
 int process_file(const char* file_path, const RagFile* referenceRagFile, MinHeap* heap) {
     FILE* file = fopen(file_path, "rb");

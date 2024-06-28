@@ -13,6 +13,7 @@ module = Extension(
         "src/algorithms/jaccard.c",
         "src/algorithms/cosine.c",
         "src/utils/file_io.c",
+        "src/utils/strdup.c",
         "src/search/heap.c",
         "src/search/scan.c",
     ],
@@ -55,6 +56,9 @@ setup(
             "pytest",
             "pytest-cov",
             "wheel",
+        ],
+        "transformers": [
+            "transformers>=4.0.0"
         ],
     },
     package_data={
