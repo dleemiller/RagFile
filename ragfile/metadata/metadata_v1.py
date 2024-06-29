@@ -8,9 +8,9 @@ from functools import partial
 class RagFileMetaV1(ctypes.Structure):
     _pack_ = 1
     _fields_ = [
-        ("model_id", ctypes.c_char * 64),
-        ("tokenizer_id", ctypes.c_char * 64),
         ("labels", ctypes.c_ushort * 16),
+        ("dataset_name", ctypes.c_char * 128),
+        ("dataset_row_id", ctypes.c_char * 16),
         ("sourcefile_name", ctypes.c_char * 128),
         ("sourcefile_hash", ctypes.c_char * 64),
         ("chunk_number", ctypes.c_int),
@@ -20,19 +20,19 @@ class RagFileMetaV1(ctypes.Structure):
     @classmethod
     def serialize(
         cls,
-        model_id: str,
-        tokenizer_id: str,
-        labels: list,
-        source_text: str,
-        chunk_number: int,
+        labels: list = [],
+        source_text: str = "",
+        chunk_number: int = 0,
+        dataset_name: str = "",
+        dataset_row_id: str = "",
         sourcefile_name: str = "",
     ) -> str:
         instance = cls()
-        instance.model_id = model_id.encode("utf-8")[:64]
-        instance.tokenizer_id = tokenizer_id.encode("utf-8")[:64]
         labels_array = (ctypes.c_ushort * 16)(*labels[:16])
         instance.labels = labels_array
         instance.sourcefile_name = sourcefile_name.encode("utf-8")[:128]
+        instance.dataset_name = dataset_name.encode("utf-8")[:128]
+        instance.dataset_row_id = dataset_row_id.encode("utf-8")[:16]
 
         # Calculate the source file hash from the source text
         hasher = hashlib.sha256()

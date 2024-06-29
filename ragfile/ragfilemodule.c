@@ -1,5 +1,6 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <structmember.h>
 #include <unistd.h>
 #include "../src/include/config.h"
 #include "../src/core/ragfile.h"
@@ -24,6 +25,7 @@ typedef struct {
     PyObject_HEAD
     RagFile* rf;
     PyRagFileHeader* header;
+    PyObject* file_metadata;
 } PyRagFile;
 
 // Forward declarations for header and file type deallocations
@@ -47,160 +49,169 @@ static void PyRagFileHeader_dealloc(PyRagFileHeader* self) {
 
 // Deallocate PyRagFile
 static void PyRagFile_dealloc(PyRagFile* self) {
-    ragfile_free(self->rf);
-    Py_XDECREF(self->header);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    if (self->rf) {
+        if (self->rf->embeddings) {
+            free(self->rf->embeddings);
+	    self->rf->embeddings = NULL;
+	}
+        ragfile_free(self->rf);  // Free the RagFile structure if there's a dedicated function for it
+    }
+    Py_XDECREF(self->header);  // Decrement reference count to the header obj
+    Py_XDECREF(self->file_metadata);  // decrement
+    Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject itself
+}
+
+// Initialize PyRagFile
+
+// Validate embeddings and tokens, and prepare the embeddings array
+static int prepare_embeddings(PyObject* embeddings_obj, float** flattened, size_t* total_floats, uint32_t* num_embeddings, uint32_t* embedding_dim) {
+    if (!PyList_Check(embeddings_obj)) {
+        PyErr_SetString(PyExc_TypeError, "embeddings must be a list of lists of floats");
+        return 0;
+    }
+
+    *num_embeddings = PyList_Size(embeddings_obj);
+    if (*num_embeddings == 0) {
+        PyErr_SetString(PyExc_ValueError, "embeddings list cannot be empty");
+        return 0;
+    }
+
+    // Check the first embedding to determine the dimension
+    PyObject* first_emb = PyList_GetItem(embeddings_obj, 0);
+    if (!PyList_Check(first_emb)) {
+        PyErr_SetString(PyExc_TypeError, "Each embedding must be a list of floats");
+        return 0;
+    }
+
+    *embedding_dim = PyList_Size(first_emb);
+    *total_floats = *num_embeddings * *embedding_dim;
+    *flattened = (float*)malloc(*total_floats * sizeof(float));
+    if (*flattened == NULL) {
+        PyErr_NoMemory();
+        return 0;
+    }
+
+    float* ptr = *flattened;
+    for (Py_ssize_t i = 0; i < *num_embeddings; i++) {
+        PyObject* emb_list = PyList_GetItem(embeddings_obj, i);
+        if (!PyList_Check(emb_list) || PyList_Size(emb_list) != *embedding_dim) {
+            PyErr_SetString(PyExc_TypeError, "All embeddings must be lists of floats of the same length");
+            free(*flattened);
+            return 0;
+        }
+        for (Py_ssize_t j = 0; j < *embedding_dim; j++) {
+            PyObject* float_obj = PyList_GetItem(emb_list, j);
+            if (!PyFloat_Check(float_obj)) {
+                PyErr_SetString(PyExc_TypeError, "Embedding values must be floats");
+                free(*flattened);
+                return 0;
+            }
+            *ptr++ = (float)PyFloat_AsDouble(float_obj);
+        }
+    }
+    return 1;
 }
 
 // Initialize PyRagFile
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     const char* text = NULL;
     PyObject* token_ids_obj = NULL;
-    PyObject* embedding_obj = NULL;
-    const char* metadata = NULL;
-    PyObject* tokenizer_id_obj = NULL;
-    PyObject* embedding_id_obj = NULL;
+    PyObject* embeddings_obj = NULL;
+    const char* extended_metadata = NULL;
+    const char* tokenizer_id = NULL;
+    const char* embedding_id = NULL;
     uint16_t metadata_version = 0;
+    uint32_t num_embeddings = 0;
+    uint32_t embedding_dim = 0;
     int is_loaded = 0;
 
-    static char* kwlist[] = {"text", "token_ids", "embedding", "metadata", "tokenizer_id", "embedding_id", "metadata_version", "is_loaded", NULL};
+    static char* kwlist[] = {"text", "token_ids", "embeddings", "extended_metadata", "tokenizer_id", "embedding_id", "metadata_version", "is_loaded", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sOOsOOHi", kwlist, &text, &token_ids_obj, &embedding_obj, &metadata, &tokenizer_id_obj, &embedding_id_obj, &metadata_version, &is_loaded)) {
-        printf("Failed to parse arguments\n");
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sOOsssHi", kwlist,
+                                     &text, &token_ids_obj, &embeddings_obj, &extended_metadata,
+                                     &tokenizer_id, &embedding_id, &metadata_version, &is_loaded)) {
+        return -1; // Error handling if arguments are not correctly parsed
+    }
+
+    if (!is_loaded && (!text || !token_ids_obj || !embeddings_obj || !tokenizer_id || !embedding_id)) {
+        PyErr_SetString(PyExc_ValueError, "Missing required arguments");
         return -1;
     }
 
-    // Check required arguments if not loaded
-    if (!is_loaded && (text == NULL || token_ids_obj == NULL || embedding_obj == NULL || tokenizer_id_obj == NULL || embedding_id_obj == NULL)) {
-        PyErr_SetString(PyExc_ValueError, "Missing required arguments: text, token_ids, embedding, tokenizer_id, and embedding_id are required");
+    uint32_t* token_ids = NULL;
+    float* flattened_embeddings = NULL;
+    size_t total_floats = 0;
+
+    self->file_metadata = PyDict_New();
+    if (!self->file_metadata) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create file metadata dictionary");
+        Py_DECREF(self->header);
         return -1;
     }
-
-    // Validate the types of token_ids and embedding if not loaded
-    if (!is_loaded && token_ids_obj && !PyList_Check(token_ids_obj)) {
-        PyErr_SetString(PyExc_TypeError, "token_ids must be a list");
-        return -1;
-    }
-
-    if (!is_loaded && embedding_obj && !PyList_Check(embedding_obj)) {
-        PyErr_SetString(PyExc_TypeError, "embedding must be a list");
-        return -1;
-    }
-
-    // Validate that token_ids are integers if not loaded
-    if (!is_loaded && token_ids_obj) {
-        Py_ssize_t token_count = PyList_Size(token_ids_obj);
-        for (Py_ssize_t i = 0; i < token_count; i++) {
-            if (!PyLong_Check(PyList_GetItem(token_ids_obj, i))) {
-                PyErr_SetString(PyExc_TypeError, "token_ids must be a list of integers");
-                return -1;
-            }
-        }
-    }
-
-    // Validate that embedding are floats if not loaded
-    if (!is_loaded && embedding_obj) {
-        Py_ssize_t embedding_size = PyList_Size(embedding_obj);
-        for (Py_ssize_t i = 0; i < embedding_size; i++) {
-            if (!PyFloat_Check(PyList_GetItem(embedding_obj, i))) {
-                PyErr_SetString(PyExc_TypeError, "embedding must be a list of floats");
-                return -1;
-            }
-        }
-    }
-
-    // Validate the length of token_ids if not loaded
-    if (!is_loaded && PyList_Size(token_ids_obj) < 3) {
-        PyErr_SetString(PyExc_ValueError, "token_ids must contain at least 3 elements for the MinHash algorithm to work");
-        return -1;
-    }
-
-    // Initialize with zeros to avoid uninitialized memory issues
-    uint16_t tokenizer_id_hash = 0;
-    uint16_t embedding_id_hash = 0;
-
-    if (tokenizer_id_obj) {
-        if (PyUnicode_Check(tokenizer_id_obj)) {
-            const char* tokenizer_id_str = PyUnicode_AsUTF8(tokenizer_id_obj);
-            tokenizer_id_hash = ragfile_compute_id_hash(tokenizer_id_str);
-        } else if (PyLong_Check(tokenizer_id_obj)) {
-            tokenizer_id_hash = (uint16_t)PyLong_AsUnsignedLong(tokenizer_id_obj);
-        } else {
-            PyErr_SetString(PyExc_TypeError, "tokenizer_id must be a string or an integer");
-            printf("Invalid tokenizer_id type\n");
-            return -1;
-        }
-    }
-
-    if (embedding_id_obj) {
-        if (PyUnicode_Check(embedding_id_obj)) {
-            const char* embedding_id_str = PyUnicode_AsUTF8(embedding_id_obj);
-            embedding_id_hash = ragfile_compute_id_hash(embedding_id_str);
-        } else if (PyLong_Check(embedding_id_obj)) {
-            embedding_id_hash = (uint16_t)PyLong_AsUnsignedLong(embedding_id_obj);
-        } else {
-            PyErr_SetString(PyExc_TypeError, "embedding_id must be a string or an integer");
-            printf("Invalid embedding_id type\n");
-            return -1;
-        }
-    }
-
-    //printf("tokenizer_id_hash: %u, embedding_id_hash: %u\n", tokenizer_id_hash, embedding_id_hash);
 
     if (!is_loaded) {
-        Py_ssize_t token_count = PyList_Size(token_ids_obj);
-        uint32_t* token_ids = malloc(token_count * sizeof(uint32_t));
-        if (token_ids == NULL) {
+        // Token IDs conversion
+        Py_ssize_t num_tokens = PyList_Size(token_ids_obj);
+        token_ids = (uint32_t*) malloc(num_tokens * sizeof(uint32_t));
+        if (!token_ids) {
             PyErr_NoMemory();
-            printf("Failed to allocate memory for token_ids\n");
             return -1;
         }
-        for (Py_ssize_t i = 0; i < token_count; i++) {
-            token_ids[i] = PyLong_AsUnsignedLong(PyList_GetItem(token_ids_obj, i));
+        for (Py_ssize_t i = 0; i < num_tokens; i++) {
+            PyObject* item = PyList_GetItem(token_ids_obj, i);
+            if (!PyLong_Check(item)) {
+                free(token_ids);
+		token_ids = NULL;
+                PyErr_SetString(PyExc_TypeError, "Token IDs must be integers");
+                return -1;
+            }
+            token_ids[i] = (uint32_t)PyLong_AsUnsignedLong(item);
         }
 
-        Py_ssize_t embedding_size = PyList_Size(embedding_obj);
-        float* embedding = malloc(embedding_size * sizeof(float));
-        if (embedding == NULL) {
+        // Embeddings preparation
+        if (!prepare_embeddings(embeddings_obj, &flattened_embeddings, &total_floats, &num_embeddings, &embedding_dim)) {
             free(token_ids);
-            PyErr_NoMemory();
-            printf("Failed to allocate memory for embedding\n");
-            return -1;
-        }
-        for (Py_ssize_t i = 0; i < embedding_size; i++) {
-            embedding[i] = (float)PyFloat_AsDouble(PyList_GetItem(embedding_obj, i));
+	    token_ids = NULL;
+            return -1; // Validate and prepare the embeddings array
         }
 
-        RagfileError error = ragfile_create(&self->rf, text, token_ids, token_count, 
-                                            embedding, embedding_size, metadata, 
-                                            tokenizer_id_hash, embedding_id_hash, metadata_version);
-
-        free(token_ids);
-        free(embedding);
+        // RagFile creation
+        RagfileError error = ragfile_create(&self->rf, text, token_ids, num_tokens,
+                                            flattened_embeddings, total_floats, extended_metadata,
+                                            tokenizer_id, embedding_id, metadata_version, num_embeddings, embedding_dim);
+	free(token_ids);
+	token_ids = NULL;
+	free(flattened_embeddings);
+	flattened_embeddings = NULL;
 
         if (error != RAGFILE_SUCCESS) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to create RagFile");
-            printf("Failed to create RagFile\n");
             return -1;
         }
+
+    	PyDict_SetItemString(self->file_metadata, "tokenizer_id", PyUnicode_FromString(tokenizer_id));
+    	PyDict_SetItemString(self->file_metadata, "embedding_id", PyUnicode_FromString(embedding_id));
+    	PyDict_SetItemString(self->file_metadata, "metadata_version", PyLong_FromUnsignedLong(metadata_version));
+    	PyDict_SetItemString(self->file_metadata, "num_embeddings", PyLong_FromUnsignedLong(num_embeddings));
+    	PyDict_SetItemString(self->file_metadata, "embedding_dim", PyLong_FromUnsignedLong(embedding_dim));
+
     }
 
-    // Check and initialize header properly
-    if (self->header == NULL) {
-        self->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
-        if (self->header == NULL) {
-            printf("Failed to create PyRagFileHeader\n");
-            return -1;
-        }
+    self->header = PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
+    if (!self->header) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to initialize RagFile header");
+        return -1;
     }
     self->header->header = &(self->rf->header);
+
 
     return 0;
 }
 
+
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     if (rf == NULL) {
-        printf("Error: RagFile is NULL\n");
+        PyErr_SetString(PyExc_ValueError, "Passed RagFile is NULL");
         return NULL;
     }
 
@@ -213,7 +224,7 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     Py_DECREF(py_rf_kw);
 
     if (py_rf == NULL) {
-        printf("Failed to create PyRagFile object\n");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create PyRagFile object");
         return NULL;
     }
 
@@ -222,10 +233,27 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     py_rf->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
     if (py_rf->header == NULL) {
         Py_DECREF(py_rf);
-        printf("Failed to create PyRagFileHeader\n");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create PyRagFileHeader");
         return NULL;
     }
     py_rf->header->header = &(py_rf->rf->header);
+
+    // Handle file_metadata
+    py_rf->file_metadata = PyDict_New();
+    if (py_rf->file_metadata == NULL) {
+        Py_DECREF(py_rf);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create file metadata dictionary");
+        return NULL;
+    }
+    PyDict_SetItemString(py_rf->file_metadata, "text_hash", PyLong_FromUnsignedLong(rf->file_metadata.text_hash));
+    PyDict_SetItemString(py_rf->file_metadata, "text_size", PyLong_FromUnsignedLong(rf->file_metadata.text_size));
+    PyDict_SetItemString(py_rf->file_metadata, "metadata_version", PyLong_FromUnsignedLong(rf->file_metadata.metadata_version));
+    PyDict_SetItemString(py_rf->file_metadata, "metadata_size", PyLong_FromUnsignedLong(rf->file_metadata.metadata_size));
+    PyDict_SetItemString(py_rf->file_metadata, "num_embeddings", PyLong_FromUnsignedLong(rf->file_metadata.num_embeddings));
+    PyDict_SetItemString(py_rf->file_metadata, "embedding_dim", PyLong_FromUnsignedLong(rf->file_metadata.embedding_dim));
+    PyDict_SetItemString(py_rf->file_metadata, "embedding_size", PyLong_FromUnsignedLong(rf->file_metadata.embedding_size));
+    PyDict_SetItemString(py_rf->file_metadata, "tokenizer_id", PyUnicode_FromString(rf->file_metadata.tokenizer_id));
+    PyDict_SetItemString(py_rf->file_metadata, "embedding_id", PyUnicode_FromString(rf->file_metadata.embedding_id));
 
     return (PyObject*)py_rf;
 }
@@ -286,6 +314,10 @@ static PyObject* py_ragfile_dump(PyObject* self, PyObject* args) {
         return NULL;
     }
 
+    if (!py_rf->rf) {
+        PyErr_SetString(PyExc_RuntimeError, "Invalid RagFile");
+        return NULL;
+    }
     RagfileError error = ragfile_save(py_rf->rf, file);
     fclose(file);
 
@@ -370,20 +402,37 @@ static PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
     return PyFloat_FromDouble(similarity);
 }
 
+// Compute Cosine Similarity with options for max or avg
 static PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
-    if (!PyArg_ParseTuple(args, "O!", Py_TYPE(self), &other)) {
+    const char* mode = "max";
+
+    if (!PyArg_ParseTuple(args, "O!|s", &PyRagFileType, &other, &mode)) {
         return NULL;
     }
 
-    if (self->rf->header.embedding_size != other->rf->header.embedding_size) {
-        PyErr_SetString(PyExc_ValueError, "Embeddings must have the same size");
-        return NULL;
+    // Assume embedding dimension and number of embeddings are part of file_metadata or a similar accessible structure
+    int embedding_dim = self->rf->file_metadata.embedding_dim;
+    int num_embeddings_self = self->rf->file_metadata.num_embeddings;
+    int num_embeddings_other = other->rf->file_metadata.num_embeddings;
+
+    float max_similarity = -1.0f;
+    float total_similarity = 0.0f;
+    int count = 0;
+
+    for (int i = 0; i < num_embeddings_self; i++) {
+        for (int j = 0; j < num_embeddings_other; j++) {
+            float* emb1 = self->rf->embeddings + (i * embedding_dim);
+            float* emb2 = other->rf->embeddings + (j * embedding_dim);
+            float similarity = cosine_similarity(emb1, emb2, embedding_dim);
+            max_similarity = fmax(max_similarity, similarity);
+            total_similarity += similarity;
+            count++;
+        }
     }
 
-    float similarity = cosine_similarity(self->rf->embedding, other->rf->embedding, 
-                                         self->rf->header.embedding_size);
-    return PyFloat_FromDouble(similarity);
+    float result = strcmp(mode, "avg") == 0 ? total_similarity / count : max_similarity;
+    return PyFloat_FromDouble(result);
 }
 
 // Scanning
@@ -472,22 +521,33 @@ static PyObject* PyRagFile_get_text(PyRagFile* self, void* closure) {
     return PyUnicode_FromString(self->rf->text);
 }
 
-static PyObject* PyRagFile_get_embedding(PyRagFile* self, void* closure) {
-    PyObject* embedding = PyList_New(self->rf->header.embedding_size);
-    if (embedding == NULL) {
-        return NULL;
-    }
-    for (uint32_t i = 0; i < self->rf->header.embedding_size; i++) {
-        PyList_SET_ITEM(embedding, i, PyFloat_FromDouble(self->rf->embedding[i]));
-    }
-    return embedding;
-}
+static PyObject* PyRagFile_get_embeddings(PyRagFile* self, void* closure) {
+    int num_embeddings = self->rf->file_metadata.num_embeddings;
+    int embedding_dim = self->rf->file_metadata.embedding_dim;
 
-static PyObject* PyRagFile_get_metadata(PyRagFile* self, void* closure) {
-    if (self->rf->metadata == NULL) {
-        Py_RETURN_NONE;
+    // Creating the outer list that will contain all embeddings
+    PyObject* embeddings_list = PyList_New(num_embeddings);
+    if (!embeddings_list) return PyErr_NoMemory();
+
+    // Calculate the base index for each embedding and create lists for them
+    for (int i = 0; i < num_embeddings; i++) {
+        PyObject* single_embedding = PyList_New(embedding_dim);
+        if (!single_embedding) {
+            Py_DECREF(embeddings_list);
+            return PyErr_NoMemory();
+        }
+        
+        // Accessing the correct elements in the flat array
+        for (int j = 0; j < embedding_dim; j++) {
+            int idx = i * embedding_dim + j;  // Correct index in the flat array
+            PyObject* float_obj = PyFloat_FromDouble(self->rf->embeddings[idx]);
+            PyList_SET_ITEM(single_embedding, j, float_obj); // Takes ownership of the float_obj reference
+        }
+
+        PyList_SET_ITEM(embeddings_list, i, single_embedding);  // Takes ownership of the single_embedding reference
     }
-    return PyUnicode_FromString(self->rf->metadata);
+
+    return embeddings_list;
 }
 
 static PyObject* PyRagFile_get_header(PyRagFile* self, void* closure) {
@@ -509,10 +569,6 @@ static PyObject* PyRagFileHeader_get_embedding_hash(PyRagFileHeader* self, void*
     return PyLong_FromUnsignedLong(self->header->embedding_id_hash);
 }
 
-static PyObject* PyRagFileHeader_get_embedding_size(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong(self->header->embedding_size);
-}
-
 static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, void* closure) {
     PyObject* signature = PyList_New(MINHASH_SIZE);
     if (signature == NULL) {
@@ -522,6 +578,18 @@ static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, vo
         PyList_SET_ITEM(signature, i, PyLong_FromUnsignedLongLong(self->header->minhash_signature[i]));
     }
     return signature;
+}
+
+static PyObject* PyRagFile_get_extended_metadata(PyRagFile* self, void* closure) {
+    if (self->rf->extended_metadata == NULL) {
+        Py_RETURN_NONE;
+    }
+    return PyUnicode_FromString(self->rf->extended_metadata);
+}
+
+static PyObject* PyRagFile_get_file_metadata(PyRagFile* self, void* closure) {
+    Py_INCREF(self->file_metadata);
+    return (PyObject*)self->file_metadata;
 }
 
 // Method definitions
@@ -534,9 +602,10 @@ static PyMethodDef PyRagFile_methods[] = {
 
 static PyGetSetDef PyRagFile_getsetters[] = {
     {"text", (getter)PyRagFile_get_text, NULL, "Get the text content", NULL},
-    {"embedding", (getter)PyRagFile_get_embedding, NULL, "Get the embedding", NULL},
-    {"metadata", (getter)PyRagFile_get_metadata, NULL, "Get the metadata", NULL},
-    {"header", (getter)PyRagFile_get_header, NULL, "Get the header", NULL},
+    {"embeddings", (getter)PyRagFile_get_embeddings, NULL, "Get the embeddings", NULL},
+    {"extended_metadata", (getter)PyRagFile_get_extended_metadata, NULL, "Get the extended metadata", NULL},
+    {"header", (getter)PyRagFile_get_header, NULL, "Get the header object", NULL},
+    {"file_metadata", (getter)PyRagFile_get_file_metadata, NULL, "Get the file metadata", NULL},
     {NULL}  /* Sentinel */
 };
 
@@ -544,7 +613,6 @@ static PyGetSetDef PyRagFileHeader_getsetters[] = {
     {"version", (getter)PyRagFileHeader_get_version, NULL, "Get the version", NULL},
     {"tokenizer_id_hash", (getter)PyRagFileHeader_get_tokenizer_hash, NULL, "Get the CRC 16 hash of the tokenzier id", NULL},
     {"embedding_id_hash", (getter)PyRagFileHeader_get_embedding_hash, NULL, "Get the CRC 16 hash of the embedding id", NULL},
-    {"embedding_size", (getter)PyRagFileHeader_get_embedding_size, NULL, "Get the vector dimension of the embedding", NULL},
     {"minhash_signature", (getter)PyRagFileHeader_get_minhash_signature, NULL, "Get the MinHash signature", NULL},
     {NULL}  /* Sentinel */
 };
