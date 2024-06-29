@@ -33,6 +33,20 @@ FileIOError write_ragfile_header(FILE* file, const RagfileHeader* header) {
     return file_write(file, header, sizeof(RagfileHeader), 1);
 }
 
+FileIOError read_file_metadata(FILE* file, FileMetadata* metadata) {
+    if (fread(metadata, sizeof(FileMetadata), 1, file) != 1) {
+        return FILE_IO_ERROR_READ;
+    }
+    return FILE_IO_SUCCESS;
+}
+
+FileIOError write_file_metadata(FILE* file, const FileMetadata* metadata) {
+    if (fwrite(metadata, sizeof(FileMetadata), 1, file) != 1) {
+        return FILE_IO_ERROR_WRITE;
+    }
+    return FILE_IO_SUCCESS;
+}
+
 FileIOError read_text(FILE* file, char** text, size_t size) {
     *text = (char*)malloc(size + 1);
     if (*text == NULL) {

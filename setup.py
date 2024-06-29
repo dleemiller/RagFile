@@ -22,9 +22,9 @@ module = Extension(
         "src/core",
         "src/algorithms",
         "src/search",
-        "src/utils"
+        "src/utils",
     ],
-    extra_compile_args=['-std=c11'],  # Ensuring C11 standard is used
+    extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
 )
 
 setup(
@@ -48,8 +48,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     python_requires=">=3.6",
-    install_requires=[
-    ],
+    install_requires=[],
     extras_require={
         "dev": [
             "check-manifest",
@@ -57,9 +56,7 @@ setup(
             "pytest-cov",
             "wheel",
         ],
-        "transformers": [
-            "transformers>=4.0.0"
-        ],
+        "transformers": ["transformers>=4.0.0"],
     },
     package_data={
         "ragfile": ["*"],
@@ -68,9 +65,6 @@ setup(
         ("", ["LICENSE", "README.md"]),
     ],
     entry_points={
-        "console_scripts": [
-        ],
+        "console_scripts": [],
     },
 )
-
-

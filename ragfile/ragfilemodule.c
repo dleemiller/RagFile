@@ -54,8 +54,6 @@ static void PyRagFile_dealloc(PyRagFile* self) {
 
 // Initialize PyRagFile
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
-    printf("Entering PyRagFile_init\n");
-
     const char* text = NULL;
     PyObject* token_ids_obj = NULL;
     PyObject* embedding_obj = NULL;
@@ -147,7 +145,7 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
         }
     }
 
-    printf("tokenizer_id_hash: %u, embedding_id_hash: %u\n", tokenizer_id_hash, embedding_id_hash);
+    //printf("tokenizer_id_hash: %u, embedding_id_hash: %u\n", tokenizer_id_hash, embedding_id_hash);
 
     if (!is_loaded) {
         Py_ssize_t token_count = PyList_Size(token_ids_obj);
@@ -197,15 +195,10 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     }
     self->header->header = &(self->rf->header);
 
-    printf("PyRagFile initialized with tokenizer_id_hash: %u and embedding_id_hash: %u\n",
-           tokenizer_id_hash, embedding_id_hash);
-
     return 0;
 }
 
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
-    printf("Creating PyRagFile from RagFile\n");
-
     if (rf == NULL) {
         printf("Error: RagFile is NULL\n");
         return NULL;
@@ -226,7 +219,6 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
 
     py_rf->rf = rf;
 
-    printf("Creating PyRagFileHeader\n");
     py_rf->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
     if (py_rf->header == NULL) {
         Py_DECREF(py_rf);
@@ -235,7 +227,6 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     }
     py_rf->header->header = &(py_rf->rf->header);
 
-    printf("Successfully created PyRagFile object\n");
     return (PyObject*)py_rf;
 }
 

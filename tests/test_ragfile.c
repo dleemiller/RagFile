@@ -12,9 +12,7 @@ void test_ragfile_create_save_load() {
     const char* metadata = "Test metadata";
     
     assert(ragfile_create(&rf, text, tokens, 8, embedding, 4, metadata,
-                          ragfile_compute_id_hash("test_tokenizer"),
-                          ragfile_compute_id_hash("test_embedding"),
-                          1) == RAGFILE_SUCCESS);
+                          "test_tokenizer", "test_embedding", 1, 1, 4) == RAGFILE_SUCCESS);
     
     // Open file for writing
     FILE *file = fopen("test_ragfile.rag", "wb");
@@ -30,15 +28,15 @@ void test_ragfile_create_save_load() {
     fclose(file); // Close the file after loading
     
     // Assertions to check loaded data
-    assert(loaded_rf->header.embedding_size == 4);
-    assert(loaded_rf->header.metadata_size == strlen(metadata));
-    assert(strcmp(loaded_rf->metadata, metadata) == 0);
+    assert(loaded_rf->file_metadata.embedding_size == 4);
+    assert(loaded_rf->file_metadata.metadata_size == strlen(metadata));
+    assert(strcmp(loaded_rf->extended_metadata, metadata) == 0);
     
     float similarity = jaccard_similarity(rf->header.minhash_signature, loaded_rf->header.minhash_signature);
     assert(similarity == 1.0f);
     
     for (int i = 0; i < 4; i++) {
-        assert(rf->embedding[i] == loaded_rf->embedding[i]);
+        assert(rf->embeddings[i] == loaded_rf->embeddings[i]);
     }
     
     ragfile_free(rf);
@@ -48,9 +46,9 @@ void test_ragfile_create_save_load() {
 }
 
 void test_ragfile_id_hash() {
-    uint16_t hash1 = ragfile_compute_id_hash("test_tokenizer");
-    uint16_t hash2 = ragfile_compute_id_hash("test_tokenizer");
-    uint16_t hash3 = ragfile_compute_id_hash("different_tokenizer");
+    uint16_t hash1 = crc16("test_tokenizer");
+    uint16_t hash2 = crc16("test_tokenizer");
+    uint16_t hash3 = crc16("different_tokenizer");
     
     assert(hash1 == hash2);
     assert(hash1 != hash3);

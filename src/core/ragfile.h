@@ -19,20 +19,29 @@ typedef struct {
     uint32_t magic;
     uint16_t version;
     uint16_t flags;
-    uint32_t text_size;
-    uint32_t embedding_size;
-    uint32_t metadata_size;
     uint16_t tokenizer_id_hash;
     uint16_t embedding_id_hash;
-    uint16_t metadata_version;
     uint32_t minhash_signature[MINHASH_SIZE];
 } RagfileHeader;
 
 typedef struct {
+    uint16_t text_hash;
+    uint32_t text_size;
+    uint16_t metadata_version;
+    uint32_t metadata_size;
+    uint16_t num_embeddings;
+    uint16_t embedding_dim;
+    uint32_t embedding_size;
+    char tokenizer_id[MODEL_ID_SIZE];
+    char embedding_id[MODEL_ID_SIZE];
+} FileMetadata;
+
+typedef struct {
     RagfileHeader header;
+    FileMetadata file_metadata;
     char* text;
-    float* embedding;
-    char* metadata;
+    float* embeddings;
+    char* extended_metadata;
 } RagFile;
 
 /**
@@ -51,9 +60,9 @@ typedef struct {
  * @return RAGFILE_SUCCESS on success, or an error code on failure.
  */
 RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* token_ids, size_t token_count,
-                            const float* embedding, uint32_t embedding_size, const char* metadata, 
-                            uint16_t tokenizer_id_hash, uint16_t embedding_id_hash, 
-                            uint16_t metadata_version);
+                            const float* embeddings, uint32_t embedding_size, const char* extended_metadata, 
+                            const char* tokenizer_id, const char* embedding_id, 
+                            uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim);
 
 /**
  * Load a RagFile from disk.
@@ -85,7 +94,7 @@ void ragfile_free(RagFile* rf);
  * @param id_string The identifier string to be hashed.
  * @return The computed hash value.
  */
-uint16_t ragfile_compute_id_hash(const char* id_string);
+uint16_t crc16(const char* input_string);
 
 /**
  * Compute the MinHash signature for a set of token IDs.
