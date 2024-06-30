@@ -48,18 +48,25 @@ FileIOError write_file_metadata(FILE* file, const FileMetadata* metadata) {
 }
 
 FileIOError read_text(FILE* file, char** text, size_t size) {
-    *text = (char*)malloc(size + 1);
-    if (*text == NULL) {
-        return FILE_IO_ERROR_INVALID_ARGUMENT;
+    if (size == 0) {
+        *text = NULL;
+        return FILE_IO_SUCCESS;
     }
-    FileIOError result = file_read(file, *text, 1, size);
-    if (result == FILE_IO_SUCCESS) {
-        (*text)[size] = '\0';
-    } else {
+
+    *text = (char*)calloc(size + 1, 1);  // Allocate with zero-initialization
+    if (*text == NULL) {
+        return FILE_IO_ERROR_MEMORY;
+    }
+
+    size_t read_count = fread(*text, 1, size, file);
+    if (read_count != size) {
         free(*text);
         *text = NULL;
+        return FILE_IO_ERROR_READ;  // or FILE_IO_ERROR_INCOMPLETE_READ if partial reads are acceptable
     }
-    return result;
+
+    (*text)[size] = '\0';  // Ensure null-termination
+    return FILE_IO_SUCCESS;
 }
 
 FileIOError write_text(FILE* file, const char* text, size_t size) {

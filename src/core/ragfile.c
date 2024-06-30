@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "ragfile.h"
 #include "minhash.h"
 #include "../include/config.h"
@@ -11,6 +12,7 @@ RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_cou
     if (!token_ids || !minhash_signature || token_count == 0) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
+    assert(minhash_signature != NULL && "minhash_signature must be pre-allocated with enough space");
 
     // Half of MINHASH_SIZE for each of bi-grams and tri-grams
     const size_t half_minhash_size = MINHASH_SIZE / 2;
@@ -62,7 +64,7 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
-    *rf = (RagFile*)malloc(sizeof(RagFile));
+    *rf = (RagFile*)calloc(1, sizeof(RagFile));
     if (*rf == NULL) {
         return RAGFILE_ERROR_MEMORY;
     }
@@ -75,8 +77,14 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
     (*rf)->header.embedding_id_hash = crc16(embedding_id);
 
     // Initialize file metadata
-    strcpy((*rf)->file_metadata.tokenizer_id, tokenizer_id);
-    strcpy((*rf)->file_metadata.embedding_id, embedding_id);
+    // allocate tokenizer and embedding id
+    memset((*rf)->file_metadata.tokenizer_id, 0, MODEL_ID_SIZE);
+    strncpy((*rf)->file_metadata.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);
+    (*rf)->file_metadata.tokenizer_id[MODEL_ID_SIZE - 1] = '\0';
+    memset((*rf)->file_metadata.embedding_id, 0, MODEL_ID_SIZE);
+    strncpy((*rf)->file_metadata.embedding_id, embedding_id, MODEL_ID_SIZE - 1);
+    (*rf)->file_metadata.embedding_id[MODEL_ID_SIZE - 1] = '\0';
+
     (*rf)->file_metadata.text_size = strlen(text);
     (*rf)->file_metadata.text_hash = crc16(text);
     (*rf)->file_metadata.embedding_size = embedding_size;
@@ -85,6 +93,9 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
     (*rf)->file_metadata.num_embeddings = num_embeddings;
     (*rf)->file_metadata.embedding_dim = embedding_dim;
 
+    // Zero out the minhash_signature array before computation.
+    memset((*rf)->header.minhash_signature, 0, MINHASH_SIZE * sizeof(uint32_t));
+    
     // Compute minhash signature
     RagfileError mh_error = ragfile_compute_minhash(token_ids, token_count, (*rf)->header.minhash_signature);
     if (mh_error != RAGFILE_SUCCESS) {
@@ -101,10 +112,10 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
         return RAGFILE_ERROR_MEMORY;
     }
 
-    // Copy embedding
-    (*rf)->embeddings = (float*)malloc(embedding_size * sizeof(float));
+    // Allocating embeddings using calloc to initialize them to zero
+    (*rf)->embeddings = (float*)calloc(embedding_size, sizeof(float));
     if ((*rf)->embeddings == NULL) {
-        ragfile_free(*rf);
+        ragfile_free(*rf);  // Ensures all previously allocated memory is freed properly
         *rf = NULL;
         return RAGFILE_ERROR_MEMORY;
     }
@@ -128,73 +139,71 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
 void ragfile_free(RagFile* rf) {
     if (rf) {
         free(rf->text);
+        rf->text = NULL;  // Prevent dangling pointer
+
         free(rf->embeddings);
+        rf->embeddings = NULL;  // Prevent dangling pointer
+
         free(rf->extended_metadata);
+        rf->extended_metadata = NULL;  // Prevent dangling pointer
+
         free(rf);
+        rf = NULL;  // Prevent dangling pointer
     }
 }
-
 
 RagfileError ragfile_load(RagFile** rf, FILE* file) {
     if (!rf || !file) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
-    *rf = (RagFile*)malloc(sizeof(RagFile));
+    *rf = (RagFile*)calloc(1, sizeof(RagFile));
     if (*rf == NULL) {
         return RAGFILE_ERROR_MEMORY;
     }
 
-    // Read header
     if (read_ragfile_header(file, &(*rf)->header) != FILE_IO_SUCCESS) {
-        free(*rf);
+        ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_IO;
     }
 
-    // Verify magic number and version
     if ((*rf)->header.magic != RAGFILE_MAGIC || (*rf)->header.version != RAGFILE_VERSION) {
-        free(*rf);
+        ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_FORMAT;
     }
 
-    // Read header
     if (read_file_metadata(file, &(*rf)->file_metadata) != FILE_IO_SUCCESS) {
-        free(*rf);
+        ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_IO;
     }
 
-    // Load text
+    // Read and validate the tokenizer and embedding IDs
+    if ((*rf)->file_metadata.tokenizer_id[MODEL_ID_SIZE - 1] != '\0' ||
+        (*rf)->file_metadata.embedding_id[MODEL_ID_SIZE - 1] != '\0') {
+        ragfile_free(*rf);
+        *rf = NULL;
+        return RAGFILE_ERROR_FORMAT;
+    }
+
     if (read_text(file, &(*rf)->text, (*rf)->file_metadata.text_size) != FILE_IO_SUCCESS) {
-        free(*rf);
+        ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_IO;
     }
 
-    // Load embedding
-    (*rf)->embeddings = (float*)malloc((*rf)->file_metadata.embedding_size * sizeof(float));
-    if ((*rf)->embeddings == NULL) {
-        free((*rf)->text);
-        free(*rf);
+    (*rf)->embeddings = (float*)calloc((*rf)->file_metadata.embedding_size, sizeof(float));
+    if ((*rf)->embeddings == NULL || read_embedding(file, (*rf)->embeddings, (*rf)->file_metadata.embedding_size) != FILE_IO_SUCCESS) {
+        ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_MEMORY;
     }
-    if (read_embedding(file, (*rf)->embeddings, (*rf)->file_metadata.embedding_size) != FILE_IO_SUCCESS) {
-        free((*rf)->embeddings);
-        free((*rf)->text);
-        free(*rf);
-        *rf = NULL;
-        return RAGFILE_ERROR_IO;
-    }
 
-    // Load metadata
     if ((*rf)->file_metadata.metadata_size > 0) {
         if (read_metadata(file, &(*rf)->extended_metadata, (*rf)->file_metadata.metadata_size) != FILE_IO_SUCCESS) {
-            free((*rf)->embeddings);
-            free((*rf)->text);
-            free(*rf);
+            ragfile_free(*rf);
             *rf = NULL;
             return RAGFILE_ERROR_IO;
         }
@@ -206,7 +215,7 @@ RagfileError ragfile_load(RagFile** rf, FILE* file) {
 }
 
 RagfileError ragfile_save(const RagFile* rf, FILE* file) {
-    if (!rf || !file) {
+    if (!rf || !file || !rf->text || !rf->embeddings || (rf->extended_metadata && rf->file_metadata.metadata_size == 0)) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
@@ -214,6 +223,7 @@ RagfileError ragfile_save(const RagFile* rf, FILE* file) {
         return RAGFILE_ERROR_IO;
     }
 
+    // THE ERROR IS HERE
     if (write_file_metadata(file, &rf->file_metadata) != FILE_IO_SUCCESS) {
         return RAGFILE_ERROR_IO;
     }

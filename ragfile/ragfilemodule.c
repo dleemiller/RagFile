@@ -49,16 +49,10 @@ static void PyRagFileHeader_dealloc(PyRagFileHeader* self) {
 
 // Deallocate PyRagFile
 static void PyRagFile_dealloc(PyRagFile* self) {
-    if (self->rf) {
-        if (self->rf->embeddings) {
-            free(self->rf->embeddings);
-	    self->rf->embeddings = NULL;
-	}
-        ragfile_free(self->rf);  // Free the RagFile structure if there's a dedicated function for it
-    }
-    Py_XDECREF(self->header);  // Decrement reference count to the header obj
-    Py_XDECREF(self->file_metadata);  // decrement
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject itself
+    ragfile_free(self->rf);
+    Py_XDECREF(self->header);
+    Py_XDECREF(self->file_metadata);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 // Initialize PyRagFile
@@ -208,6 +202,51 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
+// Helper function to add unsigned long to dict
+int add_ulong_to_dict(PyObject* dict, const char* key, unsigned long value) {
+    PyObject* py_value = PyLong_FromUnsignedLong(value);
+    if (!py_value) return 0; // Memory allocation failed
+    if (PyDict_SetItemString(dict, key, py_value) < 0) {
+        Py_DECREF(py_value);
+        return 0;
+    }
+    Py_DECREF(py_value);
+    return 1;
+}
+
+// Helper function to add string to dict
+int add_string_to_dict(PyObject* dict, const char* key, const char* value) {
+    if (!value) return 0; // NULL string, failure
+    PyObject* py_value = PyUnicode_FromString(value);
+    if (!py_value) return 0; // Memory allocation failed
+    if (PyDict_SetItemString(dict, key, py_value) < 0) {
+        Py_DECREF(py_value);
+        return 0;
+    }
+    Py_DECREF(py_value);
+    return 1;
+}
+
+static int set_metadata_dict(PyObject* dict, RagFile* rf) {
+    // Check that the dictionary and the RagFile pointer are not NULL
+    if (!dict || !rf) return 0;
+
+
+    // Set numeric items
+    if (!add_ulong_to_dict(dict, "text_hash", rf->file_metadata.text_hash)) return 0;
+    if (!add_ulong_to_dict(dict, "text_size", rf->file_metadata.text_size)) return 0;
+    if (!add_ulong_to_dict(dict, "metadata_version", rf->file_metadata.metadata_version)) return 0;
+    if (!add_ulong_to_dict(dict, "metadata_size", rf->file_metadata.metadata_size)) return 0;
+    if (!add_ulong_to_dict(dict, "num_embeddings", rf->file_metadata.num_embeddings)) return 0;
+    if (!add_ulong_to_dict(dict, "embedding_dim", rf->file_metadata.embedding_dim)) return 0;
+    if (!add_ulong_to_dict(dict, "embedding_size", rf->file_metadata.embedding_size)) return 0;
+
+    // Set string items
+    if (!add_string_to_dict(dict, "tokenizer_id", rf->file_metadata.tokenizer_id)) return 0;
+    if (!add_string_to_dict(dict, "embedding_id", rf->file_metadata.embedding_id)) return 0;
+
+    return 1; // Success
+}
 
 static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     if (rf == NULL) {
@@ -215,11 +254,9 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
         return NULL;
     }
 
-    PyObject* py_rf_args = Py_BuildValue("()");  // Empty args
-    PyObject* py_rf_kw = Py_BuildValue("{s:i}", "is_loaded", 1);  // Keyword arguments with is_loaded flag
-
+    PyObject* py_rf_args = Py_BuildValue("()");
+    PyObject* py_rf_kw = Py_BuildValue("{s:i}", "is_loaded", 1);
     PyRagFile* py_rf = (PyRagFile*)PyObject_Call((PyObject*)&PyRagFileType, py_rf_args, py_rf_kw);
-
     Py_DECREF(py_rf_args);
     Py_DECREF(py_rf_kw);
 
@@ -229,34 +266,33 @@ static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
     }
 
     py_rf->rf = rf;
-
-    py_rf->header = (PyRagFileHeader*)PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
+    py_rf->header = PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
     if (py_rf->header == NULL) {
-        Py_DECREF(py_rf);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create PyRagFileHeader");
+        Py_DECREF(py_rf);
         return NULL;
     }
     py_rf->header->header = &(py_rf->rf->header);
 
-    // Handle file_metadata
     py_rf->file_metadata = PyDict_New();
     if (py_rf->file_metadata == NULL) {
-        Py_DECREF(py_rf);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create file metadata dictionary");
+        Py_DECREF(py_rf->header);
+        Py_DECREF(py_rf);
         return NULL;
     }
-    PyDict_SetItemString(py_rf->file_metadata, "text_hash", PyLong_FromUnsignedLong(rf->file_metadata.text_hash));
-    PyDict_SetItemString(py_rf->file_metadata, "text_size", PyLong_FromUnsignedLong(rf->file_metadata.text_size));
-    PyDict_SetItemString(py_rf->file_metadata, "metadata_version", PyLong_FromUnsignedLong(rf->file_metadata.metadata_version));
-    PyDict_SetItemString(py_rf->file_metadata, "metadata_size", PyLong_FromUnsignedLong(rf->file_metadata.metadata_size));
-    PyDict_SetItemString(py_rf->file_metadata, "num_embeddings", PyLong_FromUnsignedLong(rf->file_metadata.num_embeddings));
-    PyDict_SetItemString(py_rf->file_metadata, "embedding_dim", PyLong_FromUnsignedLong(rf->file_metadata.embedding_dim));
-    PyDict_SetItemString(py_rf->file_metadata, "embedding_size", PyLong_FromUnsignedLong(rf->file_metadata.embedding_size));
-    PyDict_SetItemString(py_rf->file_metadata, "tokenizer_id", PyUnicode_FromString(rf->file_metadata.tokenizer_id));
-    PyDict_SetItemString(py_rf->file_metadata, "embedding_id", PyUnicode_FromString(rf->file_metadata.embedding_id));
+
+    if (!set_metadata_dict(py_rf->file_metadata, rf)) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to populate metadata dictionary");
+        Py_DECREF(py_rf->file_metadata);
+        Py_DECREF(py_rf->header);
+        Py_DECREF(py_rf);
+        return NULL;
+    }
 
     return (PyObject*)py_rf;
 }
+
 
 // Load RagFile from file object
 static PyObject* py_ragfile_load(PyObject* self, PyObject* args) {
@@ -330,6 +366,7 @@ static PyObject* py_ragfile_dump(PyObject* self, PyObject* args) {
 }
 
 // Load RagFile from string
+// Load RagFile from string
 static PyObject* py_ragfile_loads(PyObject* self, PyObject* args) {
     const char* data;
     Py_ssize_t length;
@@ -338,40 +375,54 @@ static PyObject* py_ragfile_loads(PyObject* self, PyObject* args) {
         return NULL;
     }
 
+    if (length == 0) {
+        PyErr_SetString(PyExc_ValueError, "Empty data cannot be loaded as a RagFile");
+        return NULL;
+    }
+
     FILE* file = fmemopen((void*)data, length, "rb");
-    if (file == NULL) {
+    if (!file) {
         PyErr_SetString(PyExc_IOError, "Failed to open memory buffer as file");
         return NULL;
     }
 
-    RagFile* rf;
+    RagFile* rf = NULL;
     RagfileError error = ragfile_load(&rf, file);
     fclose(file);
 
-    if (error != RAGFILE_SUCCESS) {
-        PyErr_SetString(PyExc_IOError, "Failed to load RagFile from string");
+    if (error != RAGFILE_SUCCESS || !rf) {
+        if (rf) {
+            ragfile_free(rf);
+        }
+        PyErr_Format(PyExc_IOError, "Failed to load RagFile from string, error code: %d", error);
         return NULL;
     }
 
-    return PyRagFile_from_RagFile(rf);
+    PyObject* result = PyRagFile_from_RagFile(rf);
+    if (!result) {
+        ragfile_free(rf); // Clean up if Python object creation fails
+    }
+    return result;
 }
 
 // Dump RagFile to string
+// Dump RagFile to string
 static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args) {
     PyRagFile* py_rf;
-    if (!PyArg_ParseTuple(args, "O", &py_rf)) {
+
+    if (!PyArg_ParseTuple(args, "O!", &PyRagFileType, &py_rf)) {
         return NULL;
     }
 
-    if (!PyObject_TypeCheck(py_rf, &PyRagFileType)) {
-        PyErr_SetString(PyExc_TypeError, "First argument must be a RagFile object");
+    if (!py_rf->rf) {
+        PyErr_SetString(PyExc_RuntimeError, "Invalid RagFile object");
         return NULL;
     }
 
-    char* buffer;
-    size_t size;
+    char* buffer = NULL;
+    size_t size = 0;
     FILE* file = open_memstream(&buffer, &size);
-    if (file == NULL) {
+    if (!file) {
         PyErr_SetString(PyExc_IOError, "Failed to create memory buffer");
         return NULL;
     }
@@ -380,13 +431,13 @@ static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args) {
     fclose(file);
 
     if (error != RAGFILE_SUCCESS) {
-        free(buffer);
-        PyErr_SetString(PyExc_IOError, "Failed to save RagFile to string");
+        if (buffer) free(buffer);
+        PyErr_Format(PyExc_IOError, "Failed to save RagFile to string, error code: %d", error);
         return NULL;
     }
 
     PyObject* result = PyBytes_FromStringAndSize(buffer, size);
-    free(buffer);
+    free(buffer); // Free the buffer after creating the Python object
     return result;
 }
 
@@ -558,24 +609,33 @@ static PyObject* PyRagFile_get_header(PyRagFile* self, void* closure) {
 // Getter methods for RagFileHeader
 
 static PyObject* PyRagFileHeader_get_version(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong(self->header->version);
+    if (self == NULL || self->header == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Header is NULL");
+        return NULL;
+    }
+    return PyLong_FromUnsignedLong((unsigned long)self->header->version);
 }
 
 static PyObject* PyRagFileHeader_get_tokenizer_hash(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong(self->header->tokenizer_id_hash);
+    return PyLong_FromUnsignedLong((unsigned long)self->header->tokenizer_id_hash);
 }
 
 static PyObject* PyRagFileHeader_get_embedding_hash(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong(self->header->embedding_id_hash);
+    return PyLong_FromUnsignedLong((unsigned long)self->header->embedding_id_hash);
 }
 
 static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, void* closure) {
     PyObject* signature = PyList_New(MINHASH_SIZE);
     if (signature == NULL) {
-        return NULL;
+        return PyErr_NoMemory();
     }
     for (int i = 0; i < MINHASH_SIZE; i++) {
-        PyList_SET_ITEM(signature, i, PyLong_FromUnsignedLongLong(self->header->minhash_signature[i]));
+        PyObject* item = PyLong_FromUnsignedLong(self->header->minhash_signature[i]);
+        if (!item) {  // Always check for failure!
+            Py_DECREF(signature);
+            return PyErr_NoMemory();
+        }
+        PyList_SET_ITEM(signature, i, item);  // Transfers ownership to list
     }
     return signature;
 }

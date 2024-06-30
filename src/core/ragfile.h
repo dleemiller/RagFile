@@ -15,6 +15,7 @@ typedef enum {
     RAGFILE_ERROR_INVALID_ARGUMENT
 } RagfileError;
 
+#pragma pack(push, 1)
 typedef struct {
     uint32_t magic;
     uint16_t version;
@@ -23,7 +24,9 @@ typedef struct {
     uint16_t embedding_id_hash;
     uint32_t minhash_signature[MINHASH_SIZE];
 } RagfileHeader;
+#pragma pack(pop)
 
+#pragma pack(push, 1)
 typedef struct {
     uint16_t text_hash;
     uint32_t text_size;
@@ -35,6 +38,7 @@ typedef struct {
     char tokenizer_id[MODEL_ID_SIZE];
     char embedding_id[MODEL_ID_SIZE];
 } FileMetadata;
+#pragma pack(pop)
 
 typedef struct {
     RagfileHeader header;
