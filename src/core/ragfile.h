@@ -23,6 +23,7 @@ typedef struct {
     uint16_t tokenizer_id_hash;
     uint16_t embedding_id_hash;
     uint32_t minhash_signature[MINHASH_SIZE];
+    uint8_t  binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
 } RagfileHeader;
 #pragma pack(pop)
 
