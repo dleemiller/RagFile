@@ -655,7 +655,7 @@ static PyObject* PyRagFile_get_file_metadata(PyRagFile* self, void* closure) {
 // Method definitions
 static PyMethodDef PyRagFile_methods[] = {
     {"jaccard", (PyCFunction)PyRagFile_jaccard, METH_VARARGS, "Compute Jaccard similarity with another RagFile"},
-    {"cosine", (PyCFunction)PyRagFile_cosine, METH_VARARGS, "Compute Cosine similarity with another RagFile"},
+    {"cosine", (PyCFunction)PyRagFile_cosine, METH_VARARGS | METH_KEYWORDS, "Compute Cosine similarity with another RagFile"},
     {"match", (PyCFunction)PyRagFile_match, METH_VARARGS | METH_KEYWORDS, "Find matches in a directory using Jaccard similarity"},
     {NULL}  /* Sentinel */
 };
