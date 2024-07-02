@@ -21,8 +21,8 @@ int main() {
     float expected_average[16] = {-0.11, -0.40, 0.56, -0.40, 0.50, -0.60, 0.70, -0.57, 0.73, -1.00, 1.10, -1.20, 1.30, -1.40, 1.50, -1.60};
     uint8_t expected_bits[2] = {84, 85}; // Based on the provided output
 
-    computeAverageEmbedding(&embeddings[0][0], num_embeddings, embedding_dim, average_embedding);
-    quantizeAndPack(average_embedding, packed_bits);
+    compute_average_embedding(&embeddings[0][0], num_embeddings, embedding_dim, average_embedding);
+    quantize_and_pack(average_embedding, packed_bits);
 
     int success = 1;
 

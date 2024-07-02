@@ -25,14 +25,14 @@ compile_and_run() {
 
 # List of tests and their dependencies
 compile_and_run test_minhash "../src/core/minhash.c" "../src/algorithms/jaccard.c" "test_minhash.c"
-compile_and_run test_ragfile "../src/core/ragfile.c" "../src/core/minhash.c" "../src/algorithms/jaccard.c" "../src/utils/file_io.c" "test_ragfile.c"
+compile_and_run test_ragfile "../src/core/ragfile.c" "../src/core/minhash.c" "../src/algorithms/jaccard.c" "../src/algorithms/quantize.c" "../src/utils/file_io.c" "test_ragfile.c" "-DBINARY_EMBEDDING_DIM=8" 
 compile_and_run test_jaccard "../src/core/minhash.c" "../src/algorithms/jaccard.c" "test_jaccard.c"
 compile_and_run test_minhash_jaccard "../src/core/minhash.c" "../src/algorithms/jaccard.c" "test_minhash_jaccard.c"
 compile_and_run test_cosine "../src/algorithms/cosine.c" "test_cosine.c"
 compile_and_run test_hamming "../src/algorithms/hamming.c" "test_hamming.c"
 compile_and_run test_quantize "../src/algorithms/quantize.c" "test_quantize.c" "-DBINARY_EMBEDDING_DIM=16"
 compile_and_run test_heap "../src/search/heap.c" "../src/utils/strdup.h" "test_heap.c"
-compile_and_run test_scan "../src/search/scan.c" "../src/search/heap.c" "../src/core/ragfile.c" "../src/core/minhash.c" "../src/utils/file_io.c" "../src/algorithms/jaccard.c" "test_scan.c"
+compile_and_run test_scan "../src/search/scan.c" "../src/search/heap.c" "../src/core/ragfile.c" "../src/core/minhash.c" "../src/utils/file_io.c" "../src/algorithms/jaccard.c" "../src/algorithms/quantize.c" "test_scan.c"
 
 echo "All tests completed."
 

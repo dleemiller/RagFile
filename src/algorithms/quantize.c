@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
-void computeAverageEmbedding(float* flattened, size_t num_embeddings, size_t embedding_dim, float* average_embedding) {
+void compute_average_embedding(const float* flattened, size_t num_embeddings, size_t embedding_dim, float* average_embedding) {
     assert(embedding_dim % 8 == 0); // Ensure dimension is divisible by 8
     assert(BINARY_EMBEDDING_DIM <= embedding_dim); // Ensure binary dimension does not exceed total dimension
 
@@ -21,7 +21,7 @@ void computeAverageEmbedding(float* flattened, size_t num_embeddings, size_t emb
     }
 }
 
-void quantizeAndPack(float* average_embedding, uint8_t* packed_bits) {
+void quantize_and_pack(float* average_embedding, uint8_t* packed_bits) {
     memset(packed_bits, 0, BINARY_EMBEDDING_BYTE_DIM);
     for (size_t i = 0; i < BINARY_EMBEDDING_DIM; i++) {
         if (average_embedding[i] > 0) {

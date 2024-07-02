@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "ragfile.h"
 #include "minhash.h"
+#include "../algorithms/quantize.h"
 #include "../include/config.h"
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
@@ -56,6 +57,22 @@ RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_cou
     return RAGFILE_SUCCESS;
 }
 
+// Function to compute binary embeddings and store in the RagfileHeader
+RagfileError compute_binary_embedding(RagFile* rf, const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim) {
+    if (!embeddings) return RAGFILE_ERROR_INVALID_ARGUMENT;
+
+    float average_embedding[embedding_dim];
+    compute_average_embedding(embeddings, num_embeddings, embedding_dim, average_embedding);
+
+    uint8_t binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
+    quantize_and_pack(average_embedding, binary_embedding);
+
+    memcpy(rf->header.binary_embedding, binary_embedding, BINARY_EMBEDDING_BYTE_DIM);
+
+    return RAGFILE_SUCCESS;
+}
+
+
 RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* token_ids, size_t token_count,
                             const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
@@ -95,7 +112,14 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
 
     // Zero out the minhash_signature array before computation.
     memset((*rf)->header.minhash_signature, 0, MINHASH_SIZE * sizeof(uint32_t));
-    
+
+    RagfileError binary_embedding_error = compute_binary_embedding(*rf, embeddings, num_embeddings, embedding_dim);
+    if (binary_embedding_error != RAGFILE_SUCCESS) {
+        ragfile_free(*rf);
+        *rf = NULL;
+        return binary_embedding_error;
+    }
+
     // Compute minhash signature
     RagfileError mh_error = ragfile_compute_minhash(token_ids, token_count, (*rf)->header.minhash_signature);
     if (mh_error != RAGFILE_SUCCESS) {

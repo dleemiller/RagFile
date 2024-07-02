@@ -22,8 +22,8 @@ typedef struct {
     uint16_t flags;
     uint16_t tokenizer_id_hash;
     uint16_t embedding_id_hash;
-    uint32_t minhash_signature[MINHASH_SIZE];
     uint8_t  binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
+    uint32_t minhash_signature[MINHASH_SIZE];
 } RagfileHeader;
 #pragma pack(pop)
 
@@ -110,5 +110,6 @@ uint16_t crc16(const char* input_string);
  * @return RAGFILE_SUCCESS on success, or an error code on failure.
  */
 RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature);
-
+RagfileError compute_binary_embedding(RagFile* rf, const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim);
+ 
 #endif // RAGFILE_H
