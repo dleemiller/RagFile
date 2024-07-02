@@ -7,7 +7,7 @@ void testHammingDistance() {
     size_t size = sizeof(vec1) / sizeof(vec1[0]);
 
     int expected = 3; // Manually count the differing bits
-    int result = hammingDistance(vec1, vec2, size);
+    int result = hamming_distance(vec1, vec2, size);
     if (result == expected) {
         printf("Test passed. Hamming Distance: %d\n", result);
     } else {
@@ -21,7 +21,7 @@ void testHammingSimilarity() {
     size_t size = sizeof(vec1) / sizeof(vec1[0]);
 
     double expected = 0.81250; // 1 - (3 / (2 * 8))
-    double result = hammingSimilarity(vec1, vec2, size);
+    double result = hamming_similarity(vec1, vec2, size);
     if (result == expected) {
         printf("Test passed. Hamming Similarity: %.5f\n", result);
     } else {
@@ -42,7 +42,7 @@ int testHammingSimilarityExt() {
     int success = 1;
 
     for (int i = 0; i < 4; i++) {
-        similarity = hammingSimilarity(query, docs[i], sizeof(query));
+        similarity = hamming_similarity(query, docs[i], sizeof(query));
         if (similarity != expected[i]) {
             printf("Test failed for doc %d: Expected %.6f, got %.6f\n", i+1, expected[i], similarity);
             success = 0;
