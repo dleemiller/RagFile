@@ -9,6 +9,10 @@ void compute_average_embedding(const float* flattened, size_t num_embeddings, si
     assert(BINARY_EMBEDDING_DIM <= embedding_dim); // Ensure binary dimension does not exceed total dimension
 
     size_t effective_dim = BINARY_EMBEDDING_DIM; // Use binary dimension from config
+    if (effective_dim > embedding_dim) {
+        fprintf(stderr, "Error: Effective dimension exceeds embedding dimension.\n");
+        return;
+    }
 
     memset(average_embedding, 0, effective_dim * sizeof(float));
     for (size_t i = 0; i < num_embeddings; i++) {

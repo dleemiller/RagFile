@@ -11,6 +11,8 @@ module = Extension(
         "ragfile/ragfilemodule.c",  # Python binding source file
         "src/core/ragfile.c",
         "src/core/minhash.c",
+        "src/algorithms/quantize.c",
+        "src/algorithms/hamming.c",
         "src/algorithms/jaccard.c",
         "src/algorithms/cosine.c",
         "src/utils/file_io.c",

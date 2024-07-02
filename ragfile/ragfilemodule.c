@@ -461,7 +461,8 @@ static PyObject* PyRagFile_hamming(PyRagFile* self, PyObject* args) {
     }
 
     float similarity = hamming_similarity(self->rf->header.binary_embedding, 
-                                          other->rf->header.binary_embedding, self->rf->file_metadata.embedding_dim);
+                                          other->rf->header.binary_embedding,
+					  self->rf->file_metadata.embedding_dim);
     return PyFloat_FromDouble(similarity);
 }
 
