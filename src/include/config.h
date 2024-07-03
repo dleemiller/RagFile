@@ -6,12 +6,23 @@
 
 #define MODEL_ID_SIZE 64
 #define METADATA_MAX_SIZE 1024
-#define MINHASH_SIZE 256
 
-#ifndef BINARY_EMBEDDING_DIM
-#define BINARY_EMBEDDING_DIM 128 // Default dimension
-#endif
+// Configuration types
+typedef enum {
+    CONFIG_SMALL,
+    CONFIG_MEDIUM,
+    // as needed
+} ConfigType;
 
-#define BINARY_EMBEDDING_BYTE_DIM (BINARY_EMBEDDING_DIM / 8)  // Number of bytes.
+// ConfigSmall definitions
+#define CONFIG_SMALL_BINARY_EMBEDDING_DIM 64
+#define CONFIG_SMALL_BINARY_EMBEDDING_BYTE_DIM (CONFIG_SMALL_BINARY_EMBEDDING_DIM / 8)
+#define CONFIG_SMALL_MINHASH_SIZE 128
+
+// ConfigMedium definitions
+#define CONFIG_MEDIUM_BINARY_EMBEDDING_DIM 128
+#define CONFIG_MEDIUM_BINARY_EMBEDDING_BYTE_DIM (CONFIG_MEDIUM_BINARY_EMBEDDING_DIM / 8)
+#define CONFIG_MEDIUM_MINHASH_SIZE 256
 
 #endif // CONFIG_H
+

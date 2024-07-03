@@ -4,6 +4,7 @@
 #include "../include/config.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -12,8 +13,14 @@ typedef enum {
     RAGFILE_ERROR_IO,
     RAGFILE_ERROR_FORMAT,
     RAGFILE_ERROR_MEMORY,
-    RAGFILE_ERROR_INVALID_ARGUMENT
+    RAGFILE_ERROR_INVALID_ARGUMENT,
+    RAGFILE_ERROR_INVALID_CONFIG
 } RagfileError;
+
+typedef enum {
+    CONFIG_SMALL,
+    CONFIG_MEDIUM,
+} ConfigType;
 
 #pragma pack(push, 1)
 typedef struct {
@@ -22,8 +29,27 @@ typedef struct {
     uint16_t flags;
     uint16_t tokenizer_id_hash;
     uint16_t embedding_id_hash;
-    uint8_t  binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
-    uint32_t minhash_signature[MINHASH_SIZE];
+    ConfigType config_type; // Indicates the type of configuration
+} BaseHeader;
+
+typedef struct {
+    uint8_t binary_embedding[CONFIG_SMALL_BINARY_EMBEDDING_BYTE_DIM];
+    uint32_t minhash_signature[CONFIG_SMALL_MINHASH_SIZE];
+} ConfigSmall;
+
+typedef struct {
+    uint8_t binary_embedding[CONFIG_MEDIUM_BINARY_EMBEDDING_BYTE_DIM];
+    uint32_t minhash_signature[CONFIG_MEDIUM_MINHASH_SIZE];
+} ConfigMedium;
+
+typedef union {
+    ConfigSmall config_small;
+    ConfigMedium config_medium;
+} HeaderConfig;
+
+typedef struct {
+    BaseHeader base;
+    HeaderConfig config;
 } RagfileHeader;
 #pragma pack(pop)
 
@@ -49,39 +75,28 @@ typedef struct {
     char* extended_metadata;
 } RagFile;
 
-/**
- * Create a new RagFile object.
- *
- * @param rf Pointer to a RagFile pointer where the new object will be stored.
- * @param text The text content of the RagFile.
- * @param token_ids Array of token IDs used for MinHash computation.
- * @param token_count Number of tokens in the token_ids array.
- * @param embedding Array of embedding values.
- * @param embedding_size Number of values in the embedding array.
- * @param metadata Optional metadata string (can be NULL).
- * @param tokenizer_id_hash Hash of the tokenizer identifier.
- * @param embedding_id_hash Hash of the embedding model identifier.
- * @param metadata_version Version of the metadata format.
- * @return RAGFILE_SUCCESS on success, or an error code on failure.
- */
+RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, size_t half_minhash_size, void* minhash_signature);
+RagfileError compute_binary_embedding(const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim, size_t binary_embedding_size, void* binary_embedding);
 RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* token_ids, size_t token_count,
-                            const float* embeddings, uint32_t embedding_size, const char* extended_metadata, 
+                            const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
-                            uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim);
+                            uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim, ConfigType config_type);
+void ragfile_free(RagFile* rf);
 
 /**
  * Load a RagFile from disk.
  *
  * @param rf Pointer to a RagFile pointer where the loaded object will be stored.
- * @param filename Path to the file to be loaded.
+ * @param file FILE pointer to the file to be loaded.
  * @return RAGFILE_SUCCESS on success, or an error code on failure.
  */
 RagfileError ragfile_load(RagFile** rf, FILE* file);
+
 /**
  * Save a RagFile to disk.
  *
  * @param rf Pointer to the RagFile to be saved.
- * @param filename Path where the file will be saved.
+ * @param file FILE pointer to where the file will be saved.
  * @return RAGFILE_SUCCESS on success, or an error code on failure.
  */
 RagfileError ragfile_save(const RagFile* rf, FILE* file);
@@ -101,15 +116,5 @@ void ragfile_free(RagFile* rf);
  */
 uint16_t crc16(const char* input_string);
 
-/**
- * Compute the MinHash signature for a set of token IDs.
- *
- * @param token_ids Array of token IDs.
- * @param token_count Number of tokens in the array.
- * @param minhash_signature Pointer to an array where the MinHash signature will be stored.
- * @return RAGFILE_SUCCESS on success, or an error code on failure.
- */
-RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature);
-RagfileError compute_binary_embedding(RagFile* rf, const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim);
- 
 #endif // RAGFILE_H
+

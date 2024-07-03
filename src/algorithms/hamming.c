@@ -28,7 +28,7 @@ double hamming_similarity(uint8_t *vec1, uint8_t *vec2, size_t size) {
         return -1.0; // Propagate the error code
     }
 
-    int vector_dim = BINARY_EMBEDDING_DIM;
+    int vector_dim = size * 8;
     return (double)(vector_dim - distance) / (double)vector_dim;
 }
 

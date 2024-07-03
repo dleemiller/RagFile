@@ -8,15 +8,11 @@
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
 
-
-RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature) {
+RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, size_t half_minhash_size, void* minhash_signature) {
     if (!token_ids || !minhash_signature || token_count == 0) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
     assert(minhash_signature != NULL && "minhash_signature must be pre-allocated with enough space");
-
-    // Half of MINHASH_SIZE for each of bi-grams and tri-grams
-    const size_t half_minhash_size = MINHASH_SIZE / 2;
 
     MinHash* mh_bigrams;
     MinHash* mh_trigrams;
@@ -48,7 +44,7 @@ RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_cou
 
     // Combine results
     memcpy(minhash_signature, mh_bigrams->signature, half_minhash_size * sizeof(uint32_t));
-    memcpy(minhash_signature + half_minhash_size, mh_trigrams->signature, half_minhash_size * sizeof(uint32_t));
+    memcpy((uint8_t*)minhash_signature + half_minhash_size * sizeof(uint32_t), mh_trigrams->signature, half_minhash_size * sizeof(uint32_t));
 
     // Free resources
     minhash_free(mh_bigrams);
@@ -58,25 +54,24 @@ RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_cou
 }
 
 // Function to compute binary embeddings and store in the RagfileHeader
-RagfileError compute_binary_embedding(RagFile* rf, const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim) {
+RagfileError compute_binary_embedding(const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim, size_t binary_embedding_size, void* binary_embedding) {
     if (!embeddings) return RAGFILE_ERROR_INVALID_ARGUMENT;
 
     float average_embedding[embedding_dim];
     compute_average_embedding(embeddings, num_embeddings, embedding_dim, average_embedding);
 
-    uint8_t binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
-    quantize_and_pack(average_embedding, binary_embedding);
+    uint8_t binary_embedding_calc[binary_embedding_size];
+    quantize_and_pack(average_embedding, binary_embedding_calc);
 
-    memcpy(rf->header.binary_embedding, binary_embedding, BINARY_EMBEDDING_BYTE_DIM);
+    memcpy(binary_embedding, binary_embedding_calc, binary_embedding_size);
 
     return RAGFILE_SUCCESS;
 }
 
-
 RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* token_ids, size_t token_count,
                             const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
-                            uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim) {
+                            uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim, ConfigType config_type) {
     if (!rf || !text || !token_ids || !embeddings || !tokenizer_id || !embedding_id) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
@@ -87,14 +82,14 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
     }
 
     // Initialize header
-    (*rf)->header.magic = RAGFILE_MAGIC;
-    (*rf)->header.version = RAGFILE_VERSION;
-    (*rf)->header.flags = 0;  // No flags set for now
-    (*rf)->header.tokenizer_id_hash = crc16(tokenizer_id);
-    (*rf)->header.embedding_id_hash = crc16(embedding_id);
+    (*rf)->header.base.magic = RAGFILE_MAGIC;
+    (*rf)->header.base.version = RAGFILE_VERSION;
+    (*rf)->header.base.flags = 0;  // No flags set for now
+    (*rf)->header.base.tokenizer_id_hash = crc16(tokenizer_id);
+    (*rf)->header.base.embedding_id_hash = crc16(embedding_id);
+    (*rf)->header.base.config_type = config_type;
 
     // Initialize file metadata
-    // allocate tokenizer and embedding id
     memset((*rf)->file_metadata.tokenizer_id, 0, MODEL_ID_SIZE);
     strncpy((*rf)->file_metadata.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);
     (*rf)->file_metadata.tokenizer_id[MODEL_ID_SIZE - 1] = '\0';
@@ -110,18 +105,41 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
     (*rf)->file_metadata.num_embeddings = num_embeddings;
     (*rf)->file_metadata.embedding_dim = embedding_dim;
 
-    // Zero out the minhash_signature array before computation.
-    memset((*rf)->header.minhash_signature, 0, MINHASH_SIZE * sizeof(uint32_t));
+    // Configuration-specific setup
+    size_t half_minhash_size;
+    void* minhash_signature;
+    size_t binary_embedding_size;
+    void* binary_embedding;
 
-    RagfileError binary_embedding_error = compute_binary_embedding(*rf, embeddings, num_embeddings, embedding_dim);
+    switch (config_type) {
+        case CONFIG_SMALL:
+            half_minhash_size = CONFIG_SMALL_MINHASH_SIZE / 2;
+            minhash_signature = (*rf)->header.config.config_small.minhash_signature;
+            memset((*rf)->header.config.config_small.minhash_signature, 0, CONFIG_SMALL_MINHASH_SIZE * sizeof(uint32_t));
+            binary_embedding_size = CONFIG_SMALL_BINARY_EMBEDDING_BYTE_DIM;
+            binary_embedding = (*rf)->header.config.config_small.binary_embedding;
+            break;
+        case CONFIG_MEDIUM:
+            half_minhash_size = CONFIG_MEDIUM_MINHASH_SIZE / 2;
+            minhash_signature = (*rf)->header.config.config_medium.minhash_signature;
+            memset((*rf)->header.config.config_medium.minhash_signature, 0, CONFIG_MEDIUM_MINHASH_SIZE * sizeof(uint32_t));
+            binary_embedding_size = CONFIG_MEDIUM_BINARY_EMBEDDING_BYTE_DIM;
+            binary_embedding = (*rf)->header.config.config_medium.binary_embedding;
+            break;
+        default:
+            ragfile_free(*rf);
+            *rf = NULL;
+            return RAGFILE_ERROR_INVALID_CONFIG;
+    }
+
+    RagfileError binary_embedding_error = compute_binary_embedding(embeddings, num_embeddings, embedding_dim, binary_embedding_size, binary_embedding);
     if (binary_embedding_error != RAGFILE_SUCCESS) {
         ragfile_free(*rf);
         *rf = NULL;
         return binary_embedding_error;
     }
 
-    // Compute minhash signature
-    RagfileError mh_error = ragfile_compute_minhash(token_ids, token_count, (*rf)->header.minhash_signature);
+    RagfileError mh_error = ragfile_compute_minhash(token_ids, token_count, half_minhash_size, minhash_signature);
     if (mh_error != RAGFILE_SUCCESS) {
         ragfile_free(*rf);
         *rf = NULL;
