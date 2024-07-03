@@ -6,6 +6,7 @@
 #include "../src/core/ragfile.h"
 #include "../src/core/minhash.h"
 #include "../src/algorithms/jaccard.h"
+#include "../src/algorithms/hamming.h"
 #include "../src/algorithms/cosine.h"
 #include "../src/search/heap.h"
 #include "../src/search/scan.h"
@@ -453,6 +454,18 @@ static PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
     return PyFloat_FromDouble(similarity);
 }
 
+static PyObject* PyRagFile_hamming(PyRagFile* self, PyObject* args) {
+    PyRagFile* other;
+    if (!PyArg_ParseTuple(args, "O!", Py_TYPE(self), &other)) {
+        return NULL;
+    }
+
+    float similarity = hamming_similarity(self->rf->header.binary_embedding, 
+                                          other->rf->header.binary_embedding,
+					  self->rf->file_metadata.embedding_dim);
+    return PyFloat_FromDouble(similarity);
+}
+
 // Compute Cosine Similarity with options for max or avg
 static PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
@@ -640,6 +653,23 @@ static PyObject* PyRagFileHeader_get_minhash_signature(PyRagFileHeader* self, vo
     return signature;
 }
 
+static PyObject* PyRagFileHeader_get_binary_embedding(PyRagFileHeader* self, void* closure) {
+    PyObject* binary_embedding = PyList_New(BINARY_EMBEDDING_BYTE_DIM);
+    if (binary_embedding == NULL) {
+        return PyErr_NoMemory();
+    }
+    for (int i = 0; i < BINARY_EMBEDDING_BYTE_DIM; i++) {
+        PyObject* item = PyLong_FromUnsignedLong(self->header->binary_embedding[i]);
+        if (!item) {  // Always check for failure!
+            Py_DECREF(binary_embedding);
+            return PyErr_NoMemory();
+        }
+        PyList_SET_ITEM(binary_embedding, i, item);  // Transfers ownership to list
+    }
+    return binary_embedding;
+}
+
+
 static PyObject* PyRagFile_get_extended_metadata(PyRagFile* self, void* closure) {
     if (self->rf->extended_metadata == NULL) {
         Py_RETURN_NONE;
@@ -655,6 +685,7 @@ static PyObject* PyRagFile_get_file_metadata(PyRagFile* self, void* closure) {
 // Method definitions
 static PyMethodDef PyRagFile_methods[] = {
     {"jaccard", (PyCFunction)PyRagFile_jaccard, METH_VARARGS, "Compute Jaccard similarity with another RagFile"},
+    {"hamming", (PyCFunction)PyRagFile_hamming, METH_VARARGS, "Compute Hamming similarity from the binary embedding"},
     {"cosine", (PyCFunction)PyRagFile_cosine, METH_VARARGS | METH_KEYWORDS, "Compute Cosine similarity with another RagFile"},
     {"match", (PyCFunction)PyRagFile_match, METH_VARARGS | METH_KEYWORDS, "Find matches in a directory using Jaccard similarity"},
     {NULL}  /* Sentinel */
@@ -673,6 +704,7 @@ static PyGetSetDef PyRagFileHeader_getsetters[] = {
     {"version", (getter)PyRagFileHeader_get_version, NULL, "Get the version", NULL},
     {"tokenizer_id_hash", (getter)PyRagFileHeader_get_tokenizer_hash, NULL, "Get the CRC 16 hash of the tokenzier id", NULL},
     {"embedding_id_hash", (getter)PyRagFileHeader_get_embedding_hash, NULL, "Get the CRC 16 hash of the embedding id", NULL},
+    {"binary_embedding", (getter)PyRagFileHeader_get_binary_embedding, NULL, "Get the Binary Embedding", NULL},
     {"minhash_signature", (getter)PyRagFileHeader_get_minhash_signature, NULL, "Get the MinHash signature", NULL},
     {NULL}  /* Sentinel */
 };
