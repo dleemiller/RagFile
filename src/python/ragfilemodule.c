@@ -1,5 +1,6 @@
 #include <Python.h>
-#include "common.h"
+#include "pyragfile.h"
+#include "pyragfileheader.h"
 
 // Module definition
 static PyModuleDef ragfilemodule = {

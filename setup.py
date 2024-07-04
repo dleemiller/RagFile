@@ -16,7 +16,10 @@ include_dirs = [
 
 # Common sources
 common_sources = [
-    "src/python/common.c",
+    "src/python/pyragfile.c",
+    "src/python/pyragfileheader.c",
+    "src/python/similarity.c",
+    "src/python/utility.c",
     "src/core/ragfile.c",
     "src/core/minhash.c",
     "src/utils/strdup.c",

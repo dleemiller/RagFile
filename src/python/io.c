@@ -1,8 +1,9 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "../include/config.h"
-#include "common.h"
 #include "../core/ragfile.h"
+#include "pyragfile.h"
+#include "pyragfileheader.h"
 
 static PyTypeObject *imported_PyRagFileType = NULL;
 static PyTypeObject *imported_PyRagFileHeaderType = NULL;

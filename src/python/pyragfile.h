@@ -1,14 +1,11 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef PYRAGFILE_H
+#define PYRAGFILE_H
 
 #include <Python.h>
 #include "../core/ragfile.h"
+#include "pyragfileheader.h"
 
-typedef struct {
-    PyObject_HEAD
-    RagfileHeader* header;
-} PyRagFileHeader;
-
+// Forward declarations
 typedef struct {
     PyObject_HEAD
     RagFile* rf;         // Replace with actual definition or include necessary header
@@ -17,10 +14,10 @@ typedef struct {
 } PyRagFile;
 
 extern PyTypeObject PyRagFileType;
-extern PyTypeObject PyRagFileHeaderType;
 
+// Function declarations
 PyObject* PyRagFile_New(PyTypeObject* type, RagFile* rf, PyTypeObject* header_type);
-PyObject* PyRagFileHeader_New(PyTypeObject* type, RagfileHeader* header);
+int PyRagFile_shared_init(PyRagFile* self, RagFile* rf, int is_loaded, PyTypeObject* header_type);
 
-#endif // COMMON_H
+#endif // PYRAGFILE_H
 
