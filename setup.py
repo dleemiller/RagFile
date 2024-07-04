@@ -5,28 +5,56 @@ import sys
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-module = Extension(
+# Define directories
+include_dirs = [
+    "src/include",
+    "src/core",
+    "src/algorithms",
+    "src/search",
+    "src/utils",
+]
+
+# Common sources
+common_sources = [
+    "src/python/pyragfile.c",
+    "src/python/pyragfileheader.c",
+    "src/python/similarity.c",
+    "src/python/utility.c",
+    "src/core/ragfile.c",
+    "src/core/minhash.c",
+    "src/utils/strdup.c",
+    "src/algorithms/quantize.c",
+    "src/algorithms/hamming.c",
+    "src/algorithms/jaccard.c",
+    "src/algorithms/cosine.c",
+    "src/search/heap.c",
+    "src/search/scan.c",
+    "src/utils/file_io.c",
+]
+
+# Specific sources for the ragfile module
+ragfile_module_sources = common_sources + [
+    "src/python/ragfilemodule.c",
+]
+
+# Specific sources for the io module
+ragfile_io_sources = common_sources + [
+    "src/python/io.c",
+]
+
+# Extension for ragfile module
+ragfile_module = Extension(
     "ragfile.ragfile",
-    sources=[
-        "ragfile/ragfilemodule.c",  # Python binding source file
-        "src/core/ragfile.c",
-        "src/core/minhash.c",
-        "src/algorithms/quantize.c",
-        "src/algorithms/hamming.c",
-        "src/algorithms/jaccard.c",
-        "src/algorithms/cosine.c",
-        "src/utils/file_io.c",
-        "src/utils/strdup.c",
-        "src/search/heap.c",
-        "src/search/scan.c",
-    ],
-    include_dirs=[
-        "src/include",
-        "src/core",
-        "src/algorithms",
-        "src/search",
-        "src/utils",
-    ],
+    sources=ragfile_module_sources,
+    include_dirs=include_dirs,
+    extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
+)
+
+# Extension for io module
+ragfile_io = Extension(
+    "ragfile.io",
+    sources=ragfile_io_sources,
+    include_dirs=include_dirs,
     extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
 )
 
@@ -40,7 +68,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/dleemiller/RagFile",
     packages=find_packages(),
-    ext_modules=[module],
+    ext_modules=[ragfile_module, ragfile_io],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: C",
@@ -71,3 +99,5 @@ setup(
         "console_scripts": [],
     },
 )
+
+
