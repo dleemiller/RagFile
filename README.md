@@ -1,4 +1,4 @@
-# RagFile
+# RagFile (Under construction)
 
 RagFile is a Python package designed for using flat files to perform Retrieval-Augmented Generation (RAG). The specification involves a binary format with a header that contains a MinHash signature over tokens from a tokenizer. Using a coarse retrieval, the documents can then be re-ranked using the stored embedding.
 
