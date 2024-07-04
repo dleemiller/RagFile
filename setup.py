@@ -5,10 +5,10 @@ import sys
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-module = Extension(
+ragfile_module = Extension(
     "ragfile.ragfile",
     sources=[
-        "ragfile/ragfilemodule.c",  # Python binding source file
+        "src/python/ragfilemodule.c",  # Python binding source file
         "src/core/ragfile.c",
         "src/core/minhash.c",
         "src/algorithms/quantize.c",
@@ -30,6 +30,31 @@ module = Extension(
     extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
 )
 
+
+# ragfile_algorithms = Extension(
+#     "ragfile.algorithms",
+#     sources=[
+#         "src/core/minhash.c",
+#         "src/algorithms/quantize.c",
+#         "src/algorithms/hamming.c",
+#         "src/algorithms/jaccard.c",
+#         "src/algorithms/cosine.c",
+#         "src/utils/file_io.c",
+#         "src/utils/strdup.c",
+#         "src/search/heap.c",
+#         "src/search/scan.c",
+#     ],
+#     include_dirs=[
+#         "src/include",
+#         "src/core",
+#         "src/algorithms",
+#         "src/search",
+#         "src/utils",
+#     ],
+#     extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
+# )
+
+
 setup(
     name="ragfile",
     version="0.1.0",
@@ -40,7 +65,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/dleemiller/RagFile",
     packages=find_packages(),
-    ext_modules=[module],
+    ext_modules=[ragfile_module],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: C",

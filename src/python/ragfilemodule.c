@@ -2,14 +2,14 @@
 #include <Python.h>
 #include <structmember.h>
 #include <unistd.h>
-#include "../src/include/config.h"
-#include "../src/core/ragfile.h"
-#include "../src/core/minhash.h"
-#include "../src/algorithms/jaccard.h"
-#include "../src/algorithms/hamming.h"
-#include "../src/algorithms/cosine.h"
-#include "../src/search/heap.h"
-#include "../src/search/scan.h"
+#include "../include/config.h"
+#include "../core/ragfile.h"
+#include "../core/minhash.h"
+#include "../algorithms/jaccard.h"
+#include "../algorithms/hamming.h"
+#include "../algorithms/cosine.h"
+#include "../search/heap.h"
+#include "../search/scan.h"
 
 // Define types
 static PyTypeObject PyRagFileType;
