@@ -10,24 +10,9 @@
 #include "../algorithms/cosine.h"
 #include "../search/heap.h"
 #include "../search/scan.h"
+#include "../include/ragfile_types.h"
 
-// Define types
-static PyTypeObject PyRagFileType;
-static PyTypeObject PyRagFileHeaderType;
 
-// RagFile header object
-typedef struct {
-    PyObject_HEAD
-    RagfileHeader* header;
-} PyRagFileHeader;
-
-// RagFile object
-typedef struct {
-    PyObject_HEAD
-    RagFile* rf;
-    PyRagFileHeader* header;
-    PyObject* file_metadata;
-} PyRagFile;
 
 // Forward declarations for header and file type deallocations
 static void PyRagFileHeader_dealloc(PyRagFileHeader* self);
@@ -35,13 +20,6 @@ static void PyRagFile_dealloc(PyRagFile* self);
 
 // Initialize PyRagFile
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds);
-
-// Function declarations for module-level operations
-static PyObject* PyRagFile_from_RagFile(RagFile* rf);
-static PyObject* py_ragfile_load(PyObject* self, PyObject* args);
-static PyObject* py_ragfile_dump(PyObject* self, PyObject* args);
-static PyObject* py_ragfile_loads(PyObject* self, PyObject* args);
-static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args);
 
 // Deallocate PyRagFileHeader
 static void PyRagFileHeader_dealloc(PyRagFileHeader* self) {
@@ -57,6 +35,24 @@ static void PyRagFile_dealloc(PyRagFile* self) {
 }
 
 // Initialize PyRagFile
+
+PyObject* PyRagFile_New(RagFile* rf) {
+    PyRagFile* obj = (PyRagFile*)PyType_GenericNew(&PyRagFileType, NULL, NULL);
+    if (!obj)
+        return PyErr_NoMemory();
+    obj->rf = rf;
+    return (PyObject*)obj;
+}
+
+PyObject* PyRagFileHeader_New(RagfileHeader* header) {
+    PyRagFileHeader* obj = (PyRagFileHeader*)PyType_GenericNew(&PyRagFileHeaderType, NULL, NULL);
+    if (!obj)
+        return PyErr_NoMemory();
+    obj->header = header;
+    return (PyObject*)obj;
+}
+
+
 
 // Validate embeddings and tokens, and prepare the embeddings array
 static int prepare_embeddings(PyObject* embeddings_obj, float** flattened, size_t* total_floats, uint32_t* num_embeddings, uint32_t* embedding_dim) {
@@ -203,244 +199,6 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
-// Helper function to add unsigned long to dict
-int add_ulong_to_dict(PyObject* dict, const char* key, unsigned long value) {
-    PyObject* py_value = PyLong_FromUnsignedLong(value);
-    if (!py_value) return 0; // Memory allocation failed
-    if (PyDict_SetItemString(dict, key, py_value) < 0) {
-        Py_DECREF(py_value);
-        return 0;
-    }
-    Py_DECREF(py_value);
-    return 1;
-}
-
-// Helper function to add string to dict
-int add_string_to_dict(PyObject* dict, const char* key, const char* value) {
-    if (!value) return 0; // NULL string, failure
-    PyObject* py_value = PyUnicode_FromString(value);
-    if (!py_value) return 0; // Memory allocation failed
-    if (PyDict_SetItemString(dict, key, py_value) < 0) {
-        Py_DECREF(py_value);
-        return 0;
-    }
-    Py_DECREF(py_value);
-    return 1;
-}
-
-static int set_metadata_dict(PyObject* dict, RagFile* rf) {
-    // Check that the dictionary and the RagFile pointer are not NULL
-    if (!dict || !rf) return 0;
-
-
-    // Set numeric items
-    if (!add_ulong_to_dict(dict, "text_hash", rf->file_metadata.text_hash)) return 0;
-    if (!add_ulong_to_dict(dict, "text_size", rf->file_metadata.text_size)) return 0;
-    if (!add_ulong_to_dict(dict, "metadata_version", rf->file_metadata.metadata_version)) return 0;
-    if (!add_ulong_to_dict(dict, "metadata_size", rf->file_metadata.metadata_size)) return 0;
-    if (!add_ulong_to_dict(dict, "num_embeddings", rf->file_metadata.num_embeddings)) return 0;
-    if (!add_ulong_to_dict(dict, "embedding_dim", rf->file_metadata.embedding_dim)) return 0;
-    if (!add_ulong_to_dict(dict, "embedding_size", rf->file_metadata.embedding_size)) return 0;
-
-    // Set string items
-    if (!add_string_to_dict(dict, "tokenizer_id", rf->file_metadata.tokenizer_id)) return 0;
-    if (!add_string_to_dict(dict, "embedding_id", rf->file_metadata.embedding_id)) return 0;
-
-    return 1; // Success
-}
-
-static PyObject* PyRagFile_from_RagFile(RagFile* rf) {
-    if (rf == NULL) {
-        PyErr_SetString(PyExc_ValueError, "Passed RagFile is NULL");
-        return NULL;
-    }
-
-    PyObject* py_rf_args = Py_BuildValue("()");
-    PyObject* py_rf_kw = Py_BuildValue("{s:i}", "is_loaded", 1);
-    PyRagFile* py_rf = (PyRagFile*)PyObject_Call((PyObject*)&PyRagFileType, py_rf_args, py_rf_kw);
-    Py_DECREF(py_rf_args);
-    Py_DECREF(py_rf_kw);
-
-    if (py_rf == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create PyRagFile object");
-        return NULL;
-    }
-
-    py_rf->rf = rf;
-    py_rf->header = PyObject_New(PyRagFileHeader, &PyRagFileHeaderType);
-    if (py_rf->header == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create PyRagFileHeader");
-        Py_DECREF(py_rf);
-        return NULL;
-    }
-    py_rf->header->header = &(py_rf->rf->header);
-
-    py_rf->file_metadata = PyDict_New();
-    if (py_rf->file_metadata == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create file metadata dictionary");
-        Py_DECREF(py_rf->header);
-        Py_DECREF(py_rf);
-        return NULL;
-    }
-
-    if (!set_metadata_dict(py_rf->file_metadata, rf)) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to populate metadata dictionary");
-        Py_DECREF(py_rf->file_metadata);
-        Py_DECREF(py_rf->header);
-        Py_DECREF(py_rf);
-        return NULL;
-    }
-
-    return (PyObject*)py_rf;
-}
-
-
-// Load RagFile from file object
-static PyObject* py_ragfile_load(PyObject* self, PyObject* args) {
-    PyObject* file_obj;
-    if (!PyArg_ParseTuple(args, "O", &file_obj)) {
-        return NULL;
-    }
-
-    int fd = PyObject_AsFileDescriptor(file_obj);
-    if (fd == -1) {
-        PyErr_SetString(PyExc_TypeError, "Expected a file-like object");
-        return NULL;
-    }
-
-    FILE* file = fdopen(dup(fd), "rb");
-    if (file == NULL) {
-        PyErr_SetString(PyExc_IOError, "Failed to open file");
-        return NULL;
-    }
-
-    RagFile* rf;
-    RagfileError error = ragfile_load(&rf, file);
-    fclose(file);
-
-    if (error != RAGFILE_SUCCESS) {
-        PyErr_SetString(PyExc_IOError, "Failed to load RagFile");
-        return NULL;
-    }
-
-    return PyRagFile_from_RagFile(rf);
-}
-
-// Dump RagFile to file object
-static PyObject* py_ragfile_dump(PyObject* self, PyObject* args) {
-    PyRagFile* py_rf;
-    PyObject* file_obj;
-    if (!PyArg_ParseTuple(args, "OO", &py_rf, &file_obj)) {
-        return NULL;
-    }
-
-    if (!PyObject_TypeCheck(py_rf, &PyRagFileType)) {
-        PyErr_SetString(PyExc_TypeError, "First argument must be a RagFile object");
-        return NULL;
-    }
-
-    int fd = PyObject_AsFileDescriptor(file_obj);
-    if (fd == -1) {
-        PyErr_SetString(PyExc_TypeError, "Expected a file-like object");
-        return NULL;
-    }
-
-    FILE* file = fdopen(dup(fd), "wb");
-    if (file == NULL) {
-        PyErr_SetString(PyExc_IOError, "Failed to open file");
-        return NULL;
-    }
-
-    if (!py_rf->rf) {
-        PyErr_SetString(PyExc_RuntimeError, "Invalid RagFile");
-        return NULL;
-    }
-    RagfileError error = ragfile_save(py_rf->rf, file);
-    fclose(file);
-
-    if (error != RAGFILE_SUCCESS) {
-        PyErr_SetString(PyExc_IOError, "Failed to save RagFile");
-        return NULL;
-    }
-
-    Py_RETURN_NONE;
-}
-
-// Load RagFile from string
-// Load RagFile from string
-static PyObject* py_ragfile_loads(PyObject* self, PyObject* args) {
-    const char* data;
-    Py_ssize_t length;
-
-    if (!PyArg_ParseTuple(args, "s#", &data, &length)) {
-        return NULL;
-    }
-
-    if (length == 0) {
-        PyErr_SetString(PyExc_ValueError, "Empty data cannot be loaded as a RagFile");
-        return NULL;
-    }
-
-    FILE* file = fmemopen((void*)data, length, "rb");
-    if (!file) {
-        PyErr_SetString(PyExc_IOError, "Failed to open memory buffer as file");
-        return NULL;
-    }
-
-    RagFile* rf = NULL;
-    RagfileError error = ragfile_load(&rf, file);
-    fclose(file);
-
-    if (error != RAGFILE_SUCCESS || !rf) {
-        if (rf) {
-            ragfile_free(rf);
-        }
-        PyErr_Format(PyExc_IOError, "Failed to load RagFile from string, error code: %d", error);
-        return NULL;
-    }
-
-    PyObject* result = PyRagFile_from_RagFile(rf);
-    if (!result) {
-        ragfile_free(rf); // Clean up if Python object creation fails
-    }
-    return result;
-}
-
-// Dump RagFile to string
-// Dump RagFile to string
-static PyObject* py_ragfile_dumps(PyObject* self, PyObject* args) {
-    PyRagFile* py_rf;
-
-    if (!PyArg_ParseTuple(args, "O!", &PyRagFileType, &py_rf)) {
-        return NULL;
-    }
-
-    if (!py_rf->rf) {
-        PyErr_SetString(PyExc_RuntimeError, "Invalid RagFile object");
-        return NULL;
-    }
-
-    char* buffer = NULL;
-    size_t size = 0;
-    FILE* file = open_memstream(&buffer, &size);
-    if (!file) {
-        PyErr_SetString(PyExc_IOError, "Failed to create memory buffer");
-        return NULL;
-    }
-
-    RagfileError error = ragfile_save(py_rf->rf, file);
-    fclose(file);
-
-    if (error != RAGFILE_SUCCESS) {
-        if (buffer) free(buffer);
-        PyErr_Format(PyExc_IOError, "Failed to save RagFile to string, error code: %d", error);
-        return NULL;
-    }
-
-    PyObject* result = PyBytes_FromStringAndSize(buffer, size);
-    free(buffer); // Free the buffer after creating the Python object
-    return result;
-}
 
 // Methods for similarity calculations
 static PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
@@ -709,8 +467,9 @@ static PyGetSetDef PyRagFileHeader_getsetters[] = {
     {NULL}  /* Sentinel */
 };
 
+
 // RagFile type definition
-static PyTypeObject PyRagFileType = {
+PyTypeObject PyRagFileType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "ragfile.RagFile",
     .tp_doc = "RagFile object",
@@ -725,7 +484,7 @@ static PyTypeObject PyRagFileType = {
 };
 
 // RagFileHeader type definition
-static PyTypeObject PyRagFileHeaderType = {
+PyTypeObject PyRagFileHeaderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "ragfile.RagFileHeader",
     .tp_doc = "RagFile header object",
@@ -737,14 +496,6 @@ static PyTypeObject PyRagFileHeaderType = {
     .tp_getset = PyRagFileHeader_getsetters,
 };
 
-// Module-level method definitions
-static PyMethodDef ragfile_methods[] = {
-    {"load", py_ragfile_load, METH_VARARGS, "Load a RagFile from a file"},
-    {"dump", py_ragfile_dump, METH_VARARGS, "Save a RagFile to a file"},
-    {"loads", py_ragfile_loads, METH_VARARGS, "Load a RagFile from a string"},
-    {"dumps", py_ragfile_dumps, METH_VARARGS, "Save a RagFile to a string"},
-    {NULL, NULL, 0, NULL}
-};
 
 // Module definition
 static PyModuleDef ragfilemodule = {
@@ -752,7 +503,7 @@ static PyModuleDef ragfilemodule = {
     .m_name = "ragfile",
     .m_doc = "Python bindings for RagFile library",
     .m_size = -1,
-    .m_methods = ragfile_methods,
+    //.m_methods = ragfile_methods,
 };
 
 // Module initialization
