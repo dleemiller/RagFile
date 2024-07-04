@@ -1,5 +1,5 @@
-#ifndef RAGFILE_TYPES_H
-#define RAGFILE_TYPES_H
+#ifndef COMMON_H
+#define COMMON_H
 
 #include <Python.h>
 #include "../core/ragfile.h"
@@ -19,9 +19,8 @@ typedef struct {
 extern PyTypeObject PyRagFileType;
 extern PyTypeObject PyRagFileHeaderType;
 
-PyObject* PyRagFile_New(RagFile* rf);
-PyObject* PyRagFileHeader_New(RagfileHeader* header);
+PyObject* PyRagFile_New(PyTypeObject* type, RagFile* rf, PyTypeObject* header_type);
+PyObject* PyRagFileHeader_New(PyTypeObject* type, RagfileHeader* header);
 
-
-#endif // RAGFILE_TYPES_H
+#endif // COMMON_H
 
