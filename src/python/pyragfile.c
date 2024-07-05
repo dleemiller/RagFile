@@ -48,7 +48,6 @@ int PyRagFile_shared_init(PyRagFile* self, RagFile* rf, int is_loaded, PyTypeObj
 }
 
 // Initialize PyRagFile for creation from scratch
-// Initialize PyRagFile for creation from scratch
 static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     const char* text = NULL;
     PyObject* token_ids_obj = NULL;
@@ -57,8 +56,6 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     const char* tokenizer_id = NULL;
     const char* embedding_id = NULL;
     uint16_t metadata_version = 0;
-    uint32_t num_embeddings = 0;
-    uint32_t embedding_dim = 0;
     int vector1_type, vector2_type;
     PyObject* vector1_obj = NULL;
     PyObject* vector2_obj = NULL;
@@ -88,6 +85,8 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     Py_ssize_t num_tokens = 0;
     uint16_t vector1_dim = 0;
     uint16_t vector2_dim = 0;
+    uint32_t num_embeddings = 0;
+    uint32_t embedding_dim = 0;
 
     if (!is_loaded) {
         // Token IDs conversion
