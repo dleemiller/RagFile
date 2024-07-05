@@ -3,7 +3,9 @@
 
 #include <Python.h>
 #include "pyragfile.h"
+#include "../search/heap.h"
 
+// Function declarations for similarity calculations
 PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args);
 PyObject* PyRagFile_hamming(PyRagFile* self, PyObject* args);
 PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args);

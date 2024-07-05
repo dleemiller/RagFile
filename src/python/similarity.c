@@ -1,5 +1,6 @@
 #include "similarity.h"
-#include "../core/minhash.h"
+#include "../utils/file_io.h"
+#include "../algorithms/minhash.h"
 #include "../algorithms/jaccard.h"
 #include "../algorithms/hamming.h"
 #include "../algorithms/cosine.h"
@@ -9,24 +10,39 @@
 // Methods for similarity calculations
 PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
-    if (!PyArg_ParseTuple(args, "O!", Py_TYPE(self), &other)) {
+    int vec_num = 1;
+    if (!PyArg_ParseTuple(args, "O!|i", Py_TYPE(self), &other, &vec_num)) {
         return NULL;
     }
 
-    float similarity = jaccard_similarity(self->rf->header.minhash_signature, 
-                                          other->rf->header.minhash_signature);
+    VecInfo query_info = get_vec_info(self->rf, vec_num);
+    VecInfo candidate_info = get_vec_info(other->rf, vec_num);
+
+    if (query_info.type != MIN_HASH || candidate_info.type != MIN_HASH) {
+        PyErr_SetString(PyExc_ValueError, "Jaccard similarity requires MIN_HASH type vectors");
+        return NULL;
+    }
+
+    float similarity = jaccard_similarity(query_info.vec, candidate_info.vec, fmin(query_info.dim, candidate_info.dim));
     return PyFloat_FromDouble(similarity);
 }
 
 PyObject* PyRagFile_hamming(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
-    if (!PyArg_ParseTuple(args, "O!", Py_TYPE(self), &other)) {
+    int vec_num = 1;
+    if (!PyArg_ParseTuple(args, "O!|i", Py_TYPE(self), &other, &vec_num)) {
         return NULL;
     }
 
-    float similarity = hamming_similarity(self->rf->header.binary_embedding, 
-                                          other->rf->header.binary_embedding,
-                                          self->rf->file_metadata.embedding_dim);
+    VecInfo query_info = get_vec_info(self->rf, vec_num);
+    VecInfo candidate_info = get_vec_info(other->rf, vec_num);
+
+    if (query_info.type != BINARY_EMBEDDING || candidate_info.type != BINARY_EMBEDDING) {
+        PyErr_SetString(PyExc_ValueError, "Hamming similarity requires BINARY_EMBEDDING type vectors");
+        return NULL;
+    }
+
+    float similarity = hamming_similarity((const uint8_t*)query_info.vec, (const uint8_t*)candidate_info.vec, fmin(query_info.dim, candidate_info.dim));
     return PyFloat_FromDouble(similarity);
 }
 
@@ -39,10 +55,9 @@ PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
         return NULL;
     }
 
-    // Assume embedding dimension and number of embeddings are part of file_metadata or a similar accessible structure
-    int embedding_dim = self->rf->file_metadata.embedding_dim;
-    int num_embeddings_self = self->rf->file_metadata.num_embeddings;
-    int num_embeddings_other = other->rf->file_metadata.num_embeddings;
+    int embedding_dim = self->rf->header.embedding_dim;
+    int num_embeddings_self = self->rf->header.num_embeddings;
+    int num_embeddings_other = other->rf->header.num_embeddings;
 
     float max_similarity = -1.0f;
     float total_similarity = 0.0f;
@@ -67,11 +82,12 @@ PyObject* PyRagFile_cosine(PyRagFile* self, PyObject* args) {
 PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
     PyObject* file_iter;
     unsigned int top_k;
+    const char* method = "jaccard";
+    int vec_num = 1;
 
-    static char *kwlist[] = {"file_iter", "top_k", NULL};
+    static char *kwlist[] = {"file_iter", "top_k", "method", "use_alt_vector", NULL};
 
-    // Parse Python keyword arguments
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OI", kwlist, &file_iter, &top_k)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OI|si", kwlist, &file_iter, &top_k, &method, &vec_num)) {
         return NULL;
     }
 
@@ -100,7 +116,18 @@ PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
             continue;
         }
 
-        int process_status = process_file(path, self->rf, heap);
+        int process_status;
+        if (strcmp(method, "jaccard") == 0) {
+            process_status = process_file_jaccard(path, self->rf, heap, vec_num);
+        } else if (strcmp(method, "hamming") == 0) {
+            process_status = process_file_hamming(path, self->rf, heap, vec_num);
+        } else {
+            PyErr_SetString(PyExc_ValueError, "Invalid method specified");
+            Py_DECREF(file_path);
+            free_min_heap(heap);
+            return NULL;
+        }
+
         Py_DECREF(file_path);
         if (process_status != 0) {
             PyErr_SetString(PyExc_RuntimeError, "File processing failed");
@@ -116,10 +143,9 @@ PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
         return NULL;
     }
 
-    // Extract elements from the heap and append them to the Python list
     while (heap->size > 0) {
-        FileScore min_score = heap->heap[0];  // Get the root, which has the minimum score
-        PyObject* dict = Py_BuildValue("{s:s, s:f}", "file", min_score.path, "jaccard", min_score.score);
+        FileScore min_score = heap->heap[0];
+        PyObject* dict = Py_BuildValue("{s:s, s:f}", "file", min_score.path, method, min_score.score);
         if (PyList_Append(result_list, dict) == -1) {
             Py_XDECREF(dict);
             Py_DECREF(result_list);
@@ -128,10 +154,9 @@ PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
             return NULL;
         }
         Py_DECREF(dict);
-        remove_root(heap);  // Remove the root to get the next item
+        remove_root(heap);
     }
 
-    // Now reverse the list to get it in descending order of score
     if (PyList_Reverse(result_list) == -1) {
         Py_DECREF(result_list);
         free_min_heap(heap);

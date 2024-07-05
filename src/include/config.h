@@ -7,6 +7,7 @@
 #define MODEL_ID_SIZE 64
 #define METADATA_MAX_SIZE 1024
 #define MINHASH_SIZE 256
+#define DIMENSION 256
 
 #ifndef BINARY_EMBEDDING_DIM
 #define BINARY_EMBEDDING_DIM 128 // Default dimension

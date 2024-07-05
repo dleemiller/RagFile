@@ -2,82 +2,18 @@
 #include <string.h>
 #include <assert.h>
 #include "ragfile.h"
-#include "minhash.h"
-#include "../algorithms/quantize.h"
 #include "../include/config.h"
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
 
-
-RagfileError ragfile_compute_minhash(const uint32_t* token_ids, size_t token_count, uint32_t* minhash_signature) {
-    if (!token_ids || !minhash_signature || token_count == 0) {
-        return RAGFILE_ERROR_INVALID_ARGUMENT;
-    }
-    assert(minhash_signature != NULL && "minhash_signature must be pre-allocated with enough space");
-
-    // Half of MINHASH_SIZE for each of bi-grams and tri-grams
-    const size_t half_minhash_size = MINHASH_SIZE / 2;
-
-    MinHash* mh_bigrams;
-    MinHash* mh_trigrams;
-
-    // Create MinHash for bigrams
-    if (minhash_create(&mh_bigrams, half_minhash_size, 0) != MINHASH_SUCCESS) {
-        return RAGFILE_ERROR_MEMORY;
-    }
-
-    // Create MinHash for trigrams
-    if (minhash_create(&mh_trigrams, half_minhash_size, 0) != MINHASH_SUCCESS) {
-        minhash_free(mh_bigrams);
-        return RAGFILE_ERROR_MEMORY;
-    }
-
-    // Compute MinHash for bigrams
-    if (minhash_compute_from_tokens(mh_bigrams, token_ids, token_count, 2) != MINHASH_SUCCESS) {
-        minhash_free(mh_bigrams);
-        minhash_free(mh_trigrams);
-        return RAGFILE_ERROR_INVALID_ARGUMENT;
-    }
-
-    // Compute MinHash for trigrams
-    if (minhash_compute_from_tokens(mh_trigrams, token_ids, token_count, 3) != MINHASH_SUCCESS) {
-        minhash_free(mh_bigrams);
-        minhash_free(mh_trigrams);
-        return RAGFILE_ERROR_INVALID_ARGUMENT;
-    }
-
-    // Combine results
-    memcpy(minhash_signature, mh_bigrams->signature, half_minhash_size * sizeof(uint32_t));
-    memcpy(minhash_signature + half_minhash_size, mh_trigrams->signature, half_minhash_size * sizeof(uint32_t));
-
-    // Free resources
-    minhash_free(mh_bigrams);
-    minhash_free(mh_trigrams);
-
-    return RAGFILE_SUCCESS;
-}
-
-// Function to compute binary embeddings and store in the RagfileHeader
-RagfileError compute_binary_embedding(RagFile* rf, const float* embeddings, uint32_t num_embeddings, uint16_t embedding_dim) {
-    if (!embeddings) return RAGFILE_ERROR_INVALID_ARGUMENT;
-
-    float average_embedding[embedding_dim];
-    compute_average_embedding(embeddings, num_embeddings, embedding_dim, average_embedding);
-
-    uint8_t binary_embedding[BINARY_EMBEDDING_BYTE_DIM];
-    quantize_and_pack(average_embedding, binary_embedding);
-
-    memcpy(rf->header.binary_embedding, binary_embedding, BINARY_EMBEDDING_BYTE_DIM);
-
-    return RAGFILE_SUCCESS;
-}
-
-
-RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* token_ids, size_t token_count,
+RagfileError ragfile_create(RagFile** rf, const char* text, 
+                            const uint32_t* vector1, uint16_t vector1_dim, 
+                            const uint32_t* vector2, uint16_t vector2_dim,
+                            VectorType vector1_type, VectorType vector2_type,
                             const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
                             uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim) {
-    if (!rf || !text || !token_ids || !embeddings || !tokenizer_id || !embedding_id) {
+    if (!rf || !text || !vector1 || !vector2 || !embeddings || !tokenizer_id || !embedding_id) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
@@ -90,43 +26,31 @@ RagfileError ragfile_create(RagFile** rf, const char* text, const uint32_t* toke
     (*rf)->header.magic = RAGFILE_MAGIC;
     (*rf)->header.version = RAGFILE_VERSION;
     (*rf)->header.flags = 0;  // No flags set for now
-    (*rf)->header.tokenizer_id_hash = crc16(tokenizer_id);
-    (*rf)->header.embedding_id_hash = crc16(embedding_id);
+    (*rf)->header.vector1_type = vector1_type;
+    (*rf)->header.vector2_type = vector2_type;
+    (*rf)->header.vector1_dim = vector1_dim;
+    (*rf)->header.vector2_dim = vector2_dim;
 
-    // Initialize file metadata
-    // allocate tokenizer and embedding id
-    memset((*rf)->file_metadata.tokenizer_id, 0, MODEL_ID_SIZE);
-    strncpy((*rf)->file_metadata.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);
-    (*rf)->file_metadata.tokenizer_id[MODEL_ID_SIZE - 1] = '\0';
-    memset((*rf)->file_metadata.embedding_id, 0, MODEL_ID_SIZE);
-    strncpy((*rf)->file_metadata.embedding_id, embedding_id, MODEL_ID_SIZE - 1);
-    (*rf)->file_metadata.embedding_id[MODEL_ID_SIZE - 1] = '\0';
+    // Initialize vectors with zeros and copy provided dimensions
+    memset((*rf)->header.vector1, 0, DIMENSION * sizeof(uint32_t));
+    memset((*rf)->header.vector2, 0, DIMENSION * sizeof(uint32_t));
+    memcpy((*rf)->header.vector1, vector1, vector1_dim * sizeof(uint32_t));
+    memcpy((*rf)->header.vector2, vector2, vector2_dim * sizeof(uint32_t));
 
-    (*rf)->file_metadata.text_size = strlen(text);
-    (*rf)->file_metadata.text_hash = crc16(text);
-    (*rf)->file_metadata.embedding_size = embedding_size;
-    (*rf)->file_metadata.metadata_size = extended_metadata ? strlen(extended_metadata) : 0;
-    (*rf)->file_metadata.metadata_version = extended_metadata_version;
-    (*rf)->file_metadata.num_embeddings = num_embeddings;
-    (*rf)->file_metadata.embedding_dim = embedding_dim;
+    memset((*rf)->header.tokenizer_id, 0, MODEL_ID_SIZE);
+    strncpy((*rf)->header.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);
+    (*rf)->header.tokenizer_id[MODEL_ID_SIZE - 1] = '\0';
+    memset((*rf)->header.embedding_id, 0, MODEL_ID_SIZE);
+    strncpy((*rf)->header.embedding_id, embedding_id, MODEL_ID_SIZE - 1);
+    (*rf)->header.embedding_id[MODEL_ID_SIZE - 1] = '\0';
 
-    // Zero out the minhash_signature array before computation.
-    memset((*rf)->header.minhash_signature, 0, MINHASH_SIZE * sizeof(uint32_t));
-
-    RagfileError binary_embedding_error = compute_binary_embedding(*rf, embeddings, num_embeddings, embedding_dim);
-    if (binary_embedding_error != RAGFILE_SUCCESS) {
-        ragfile_free(*rf);
-        *rf = NULL;
-        return binary_embedding_error;
-    }
-
-    // Compute minhash signature
-    RagfileError mh_error = ragfile_compute_minhash(token_ids, token_count, (*rf)->header.minhash_signature);
-    if (mh_error != RAGFILE_SUCCESS) {
-        ragfile_free(*rf);
-        *rf = NULL;
-        return mh_error;
-    }
+    (*rf)->header.text_size = strlen(text);
+    (*rf)->header.text_hash = 0;  // Hashing removed
+    (*rf)->header.embedding_size = embedding_size;
+    (*rf)->header.metadata_size = extended_metadata ? strlen(extended_metadata) : 0;
+    (*rf)->header.metadata_version = extended_metadata_version;
+    (*rf)->header.num_embeddings = num_embeddings;
+    (*rf)->header.embedding_dim = embedding_dim;
 
     // Copy text
     (*rf)->text = strdup(text);
@@ -198,35 +122,21 @@ RagfileError ragfile_load(RagFile** rf, FILE* file) {
         return RAGFILE_ERROR_FORMAT;
     }
 
-    if (read_file_metadata(file, &(*rf)->file_metadata) != FILE_IO_SUCCESS) {
+    if (read_text(file, &(*rf)->text, (*rf)->header.text_size) != FILE_IO_SUCCESS) {
         ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_IO;
     }
 
-    // Read and validate the tokenizer and embedding IDs
-    if ((*rf)->file_metadata.tokenizer_id[MODEL_ID_SIZE - 1] != '\0' ||
-        (*rf)->file_metadata.embedding_id[MODEL_ID_SIZE - 1] != '\0') {
-        ragfile_free(*rf);
-        *rf = NULL;
-        return RAGFILE_ERROR_FORMAT;
-    }
-
-    if (read_text(file, &(*rf)->text, (*rf)->file_metadata.text_size) != FILE_IO_SUCCESS) {
-        ragfile_free(*rf);
-        *rf = NULL;
-        return RAGFILE_ERROR_IO;
-    }
-
-    (*rf)->embeddings = (float*)calloc((*rf)->file_metadata.embedding_size, sizeof(float));
-    if ((*rf)->embeddings == NULL || read_embedding(file, (*rf)->embeddings, (*rf)->file_metadata.embedding_size) != FILE_IO_SUCCESS) {
+    (*rf)->embeddings = (float*)calloc((*rf)->header.embedding_size, sizeof(float));
+    if ((*rf)->embeddings == NULL || read_embedding(file, (*rf)->embeddings, (*rf)->header.embedding_size) != FILE_IO_SUCCESS) {
         ragfile_free(*rf);
         *rf = NULL;
         return RAGFILE_ERROR_MEMORY;
     }
 
-    if ((*rf)->file_metadata.metadata_size > 0) {
-        if (read_metadata(file, &(*rf)->extended_metadata, (*rf)->file_metadata.metadata_size) != FILE_IO_SUCCESS) {
+    if ((*rf)->header.metadata_size > 0) {
+        if (read_metadata(file, &(*rf)->extended_metadata, (*rf)->header.metadata_size) != FILE_IO_SUCCESS) {
             ragfile_free(*rf);
             *rf = NULL;
             return RAGFILE_ERROR_IO;
@@ -239,7 +149,7 @@ RagfileError ragfile_load(RagFile** rf, FILE* file) {
 }
 
 RagfileError ragfile_save(const RagFile* rf, FILE* file) {
-    if (!rf || !file || !rf->text || !rf->embeddings || (rf->extended_metadata && rf->file_metadata.metadata_size == 0)) {
+    if (!rf || !file || !rf->text || !rf->embeddings || (rf->extended_metadata && rf->header.metadata_size == 0)) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
@@ -247,21 +157,16 @@ RagfileError ragfile_save(const RagFile* rf, FILE* file) {
         return RAGFILE_ERROR_IO;
     }
 
-    // THE ERROR IS HERE
-    if (write_file_metadata(file, &rf->file_metadata) != FILE_IO_SUCCESS) {
+    if (write_text(file, rf->text, rf->header.text_size) != FILE_IO_SUCCESS) {
         return RAGFILE_ERROR_IO;
     }
 
-    if (write_text(file, rf->text, rf->file_metadata.text_size) != FILE_IO_SUCCESS) {
+    if (write_embedding(file, rf->embeddings, rf->header.embedding_size) != FILE_IO_SUCCESS) {
         return RAGFILE_ERROR_IO;
     }
 
-    if (write_embedding(file, rf->embeddings, rf->file_metadata.embedding_size) != FILE_IO_SUCCESS) {
-        return RAGFILE_ERROR_IO;
-    }
-
-    if (rf->extended_metadata && rf->file_metadata.metadata_size > 0) {
-        if (write_metadata(file, rf->extended_metadata, rf->file_metadata.metadata_size) != FILE_IO_SUCCESS) {
+    if (rf->extended_metadata && rf->header.metadata_size > 0) {
+        if (write_metadata(file, rf->extended_metadata, rf->header.metadata_size) != FILE_IO_SUCCESS) {
             return RAGFILE_ERROR_IO;
         }
     }
@@ -269,24 +174,3 @@ RagfileError ragfile_save(const RagFile* rf, FILE* file) {
     return RAGFILE_SUCCESS;
 }
 
-uint16_t crc16(const char* input_string) {
-    if (!input_string) {
-        return 0;
-    }
-
-    // Simple CRC16 implementation
-    uint16_t crc = 0xFFFF;
-    size_t len = strlen(input_string);
-    
-    for (size_t i = 0; i < len; i++) {
-        uint8_t ch = input_string[i];
-        for (int j = 0; j < 8; j++) {
-            uint16_t b = (crc ^ ch) & 1;
-            crc >>= 1;
-            if (b) crc ^= 0xA001;
-            ch >>= 1;
-        }
-    }
-    
-    return crc;
-}

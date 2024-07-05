@@ -8,9 +8,8 @@
 // Forward declarations
 typedef struct {
     PyObject_HEAD
-    RagFile* rf;         // Replace with actual definition or include necessary header
-    PyRagFileHeader* header;    // Python object for header
-    PyObject* file_metadata; // Metadata as a Python dictionary
+    RagFile* rf;
+    PyRagFileHeader* header;
 } PyRagFile;
 
 extern PyTypeObject PyRagFileType;

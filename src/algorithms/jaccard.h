@@ -1,7 +1,6 @@
 #ifndef JACCARD_H
 #define JACCARD_H
 
-#include "../include/config.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -10,9 +9,10 @@
  *
  * @param mh1 Pointer to the first MinHash signature.
  * @param mh2 Pointer to the second MinHash signature.
- * @param size Size of the MinHash signatures.
+ * @param vector_dim Dimension of the vectors.
  * @return The computed Jaccard similarity (between 0 and 1).
  */
-float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2);
+float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2, size_t vector_dim);
 
 #endif // JACCARD_H
+

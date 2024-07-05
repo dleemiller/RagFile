@@ -12,6 +12,7 @@ include_dirs = [
     "src/algorithms",
     "src/search",
     "src/utils",
+    "src/python",
 ]
 
 # Common sources
@@ -21,8 +22,8 @@ common_sources = [
     "src/python/similarity.c",
     "src/python/utility.c",
     "src/core/ragfile.c",
-    "src/core/minhash.c",
     "src/utils/strdup.c",
+    "src/algorithms/minhash.c",
     "src/algorithms/quantize.c",
     "src/algorithms/hamming.c",
     "src/algorithms/jaccard.c",
@@ -42,6 +43,12 @@ ragfile_io_sources = common_sources + [
     "src/python/io.c",
 ]
 
+# Specific sources for the minhash module
+minhash_sources = [
+    "src/algorithms/minhash.c",
+    "src/python/pyminhash.c",
+]
+
 # Extension for ragfile module
 ragfile_module = Extension(
     "ragfile.ragfile",
@@ -58,6 +65,14 @@ ragfile_io = Extension(
     extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
 )
 
+# Extension for minhash module
+minhash_module = Extension(
+    "ragfile.minhash",
+    sources=minhash_sources,
+    include_dirs=include_dirs,
+    extra_compile_args=["-std=c11"] if sys.platform != "win32" else [],
+)
+
 setup(
     name="ragfile",
     version="0.1.0",
@@ -68,7 +83,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/dleemiller/RagFile",
     packages=find_packages(),
-    ext_modules=[ragfile_module, ragfile_io],
+    ext_modules=[ragfile_module, ragfile_io, minhash_module],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: C",
@@ -99,5 +114,4 @@ setup(
         "console_scripts": [],
     },
 )
-
 

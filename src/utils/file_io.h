@@ -25,9 +25,6 @@ FileIOError file_seek(FILE* file, long offset, int origin);
 FileIOError read_ragfile_header(FILE* file, RagfileHeader* header);
 FileIOError write_ragfile_header(FILE* file, const RagfileHeader* header);
 
-FileIOError read_file_metadata(FILE* file, FileMetadata* metadata);
-FileIOError write_file_metadata(FILE* file, const FileMetadata* metadata);
-
 FileIOError read_text(FILE* file, char** text, size_t size);
 FileIOError write_text(FILE* file, const char* text, size_t size);
 
@@ -38,3 +35,4 @@ FileIOError read_metadata(FILE* file, char** metadata, size_t size);
 FileIOError write_metadata(FILE* file, const char* metadata, size_t size);
 
 #endif // FILE_IO_H
+

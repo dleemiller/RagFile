@@ -3,7 +3,7 @@
 #include <stdio.h> // for NULL definition
 
 // Compute Hamming distance for arrays of uint8_t
-int hamming_distance(uint8_t *vec1, uint8_t *vec2, size_t size) {
+int hamming_distance(const uint8_t *vec1, const uint8_t *vec2, size_t size) {
     if (vec1 == NULL || vec2 == NULL) {
         fprintf(stderr, "Null pointer passed to hamming_distance\n");
         return -1; // Error code for null pointers
@@ -17,7 +17,7 @@ int hamming_distance(uint8_t *vec1, uint8_t *vec2, size_t size) {
 }
 
 // Compute Hamming similarity for arrays of uint8_t
-double hamming_similarity(uint8_t *vec1, uint8_t *vec2, size_t size) {
+double hamming_similarity(const uint8_t *vec1, const uint8_t *vec2, size_t size) {
     if (vec1 == NULL || vec2 == NULL) {
         fprintf(stderr, "Null pointer passed to hamming_similarity\n");
         return -1.0; // Error code for null pointers
