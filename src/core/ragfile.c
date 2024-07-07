@@ -33,8 +33,8 @@ RagfileError ragfile_create(RagFile** rf, const char* text,
     memset((*rf)->header.scan_vector, 0, SCAN_VEC_DIM * sizeof(uint32_t));
     memset((*rf)->header.dense_vector, 0, DENSE_VEC_DIM * sizeof(float16_t));
     memcpy((*rf)->header.scan_vector, scan_vector, scan_vector_dim * sizeof(uint32_t));
-    memcpy((*rf)->header.dense_vector, dense_vector, dense_vector_dim * sizeof(uint32_t));
-
+    memcpy((*rf)->header.dense_vector, dense_vector, dense_vector_dim * sizeof(float16_t));
+    
     memset((*rf)->header.tokenizer_id, 0, MODEL_ID_SIZE);
     strncpy((*rf)->header.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);
     (*rf)->header.tokenizer_id[MODEL_ID_SIZE - 1] = '\0';
@@ -54,25 +54,22 @@ RagfileError ragfile_create(RagFile** rf, const char* text,
     (*rf)->text = strdup(text);
     if ((*rf)->text == NULL) {
         ragfile_free(*rf);
-        *rf = NULL;
         return RAGFILE_ERROR_MEMORY;
     }
 
-    // Allocating embeddings using calloc to initialize them to zero
+    // Allocating embeddings
     (*rf)->embeddings = (float*)calloc(embedding_size, sizeof(float));
     if ((*rf)->embeddings == NULL) {
-        ragfile_free(*rf);  // Ensures all previously allocated memory is freed properly
-        *rf = NULL;
+        ragfile_free(*rf);
         return RAGFILE_ERROR_MEMORY;
     }
     memcpy((*rf)->embeddings, embeddings, embedding_size * sizeof(float));
 
     // Copy extended metadata
-    if (extended_metadata) {
+    if (extended_metadata && (*rf)->header.metadata_size > 0) {
         (*rf)->extended_metadata = strdup(extended_metadata);
         if ((*rf)->extended_metadata == NULL) {
             ragfile_free(*rf);
-            *rf = NULL;
             return RAGFILE_ERROR_MEMORY;
         }
     } else {
@@ -85,16 +82,9 @@ RagfileError ragfile_create(RagFile** rf, const char* text,
 void ragfile_free(RagFile* rf) {
     if (rf) {
         free(rf->text);
-        rf->text = NULL;  // Prevent dangling pointer
-
         free(rf->embeddings);
-        rf->embeddings = NULL;  // Prevent dangling pointer
-
         free(rf->extended_metadata);
-        rf->extended_metadata = NULL;  // Prevent dangling pointer
-
         free(rf);
-        rf = NULL;  // Prevent dangling pointer
     }
 }
 
@@ -120,10 +110,20 @@ RagfileError ragfile_load(RagFile** rf, FILE* file) {
         return RAGFILE_ERROR_FORMAT;
     }
 
-    if (read_text(file, &(*rf)->text, (*rf)->header.text_size) != FILE_IO_SUCCESS) {
-        ragfile_free(*rf);
-        *rf = NULL;
-        return RAGFILE_ERROR_IO;
+    if ((*rf)->header.text_size > 0) {
+        if (read_text(file, &(*rf)->text, (*rf)->header.text_size) != FILE_IO_SUCCESS) {
+            ragfile_free(*rf);
+            *rf = NULL;
+            return RAGFILE_ERROR_IO;
+        }
+    } else {
+        // If text size is 0, set text to an empty string
+        (*rf)->text = strdup("");
+        if ((*rf)->text == NULL) {
+            ragfile_free(*rf);
+            *rf = NULL;
+            return RAGFILE_ERROR_MEMORY;
+        }
     }
 
     (*rf)->embeddings = (float*)calloc((*rf)->header.embedding_size, sizeof(float));
@@ -140,31 +140,54 @@ RagfileError ragfile_load(RagFile** rf, FILE* file) {
             return RAGFILE_ERROR_IO;
         }
     } else {
-        (*rf)->extended_metadata = NULL;
+        // set to an empty string
+        (*rf)->extended_metadata = strdup("");
+        if ((*rf)->extended_metadata == NULL) {
+            ragfile_free(*rf);
+            *rf = NULL;
+            return RAGFILE_ERROR_MEMORY;
+        }
     }
 
     return RAGFILE_SUCCESS;
 }
 
 RagfileError ragfile_save(const RagFile* rf, FILE* file) {
-    if (!rf || !file || !rf->text || !rf->embeddings || (rf->extended_metadata && rf->header.metadata_size == 0)) {
+    if (!rf || !file) {
+        printf("Invalid argument: rf or file is NULL\n");
+        return RAGFILE_ERROR_INVALID_ARGUMENT;
+    }
+    if (!rf->text) {
+        printf("Invalid argument: rf->text is NULL\n");
+        return RAGFILE_ERROR_INVALID_ARGUMENT;
+    }
+    if (!rf->embeddings) {
+        printf("Invalid argument: rf->embeddings is NULL\n");
+        return RAGFILE_ERROR_INVALID_ARGUMENT;
+    }
+    if (rf->extended_metadata && rf->header.metadata_size == 0) {
+        printf("Invalid argument: rf->extended_metadata is non-NULL but metadata_size is 0\n");
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
     if (write_ragfile_header(file, &rf->header) != FILE_IO_SUCCESS) {
+        printf("Failed to write ragfile header\n");
         return RAGFILE_ERROR_IO;
     }
 
     if (write_text(file, rf->text, rf->header.text_size) != FILE_IO_SUCCESS) {
+        printf("Failed to write text\n");
         return RAGFILE_ERROR_IO;
     }
 
     if (write_embedding(file, rf->embeddings, rf->header.embedding_size) != FILE_IO_SUCCESS) {
+        printf("Failed to write embeddings\n");
         return RAGFILE_ERROR_IO;
     }
 
     if (rf->extended_metadata && rf->header.metadata_size > 0) {
         if (write_metadata(file, rf->extended_metadata, rf->header.metadata_size) != FILE_IO_SUCCESS) {
+            printf("Failed to write extended metadata\n");
             return RAGFILE_ERROR_IO;
         }
     }
