@@ -1,6 +1,5 @@
 import unittest
-from ragfile import RagFile
-import minhash
+from ragfile import RagFile, minhash, io
 
 class TestRagFile(unittest.TestCase):
 
@@ -15,10 +14,10 @@ class TestRagFile(unittest.TestCase):
         self.tokenizer_id = "tokenizer1"
         self.embedding_id = "embedding1"
         self.metadata_version = 1
-        self.vector1 = [1, 2, 3, 4]
-        self.vector2 = [1, 2, 3, 5]
-        self.vector1_type = minhash.VectorType["MIN_HASH"]
-        self.vector2_type = minhash.VectorType["MIN_HASH"]
+        self.scan_vector1 = [1, 2, 3, 4]
+        self.scan_vector2 = [1, 2, 3, 5]
+        self.dense_vector1 = [0.1, 0.2, 0.3, 0.4]
+        self.dense_vector2 = [0.5, 0.6, 0.7, 0.8]
 
         self.ragfile1 = RagFile(
             text=self.text1,
@@ -28,10 +27,8 @@ class TestRagFile(unittest.TestCase):
             tokenizer_id=self.tokenizer_id,
             embedding_id=self.embedding_id,
             metadata_version=self.metadata_version,
-            vector1_type=self.vector1_type,
-            vector2_type=self.vector2_type,
-            vector1=self.vector1,
-            vector2=self.vector2
+            scan_vector=self.scan_vector1,
+            dense_vector=self.dense_vector1,
         )
 
         self.ragfile2 = RagFile(
@@ -42,38 +39,39 @@ class TestRagFile(unittest.TestCase):
             tokenizer_id=self.tokenizer_id,
             embedding_id=self.embedding_id,
             metadata_version=self.metadata_version,
-            vector1_type=self.vector1_type,
-            vector2_type=self.vector2_type,
-            vector1=self.vector1,
-            vector2=self.vector2
+            scan_vector=self.scan_vector2,
+            dense_vector=self.dense_vector2
         )
 
     def test_ragfile_creation(self):
         self.assertEqual(self.ragfile1.text, self.text1)
-        self.assertEqual(self.ragfile1.header.vector1, self.vector1)
-        self.assertEqual(self.ragfile1.header.vector2, self.vector2)
-        self.assertEqual(self.ragfile1.header.vector1_type, minhash.VectorType["MIN_HASH"])
-        self.assertEqual(self.ragfile1.header.vector2_type, minhash.VectorType["MIN_HASH"])
-        self.assertEqual(self.ragfile1.embeddings, self.embeddings1)
+        self.assertEqual(self.ragfile1.header.scan_vector, self.scan_vector1)
+        for dv, expected in zip(self.ragfile1.header.dense_vector, self.dense_vector1):
+            self.assertAlmostEqual(dv, expected, delta=1e-3)
+        for value, expected in zip(self.ragfile1.embeddings[0], self.embeddings1[0]):
+            self.assertAlmostEqual(value, expected, delta=1e-6)
         self.assertEqual(self.ragfile1.extended_metadata, self.extended_metadata)
 
     def test_jaccard_similarity(self):
         similarity = self.ragfile1.jaccard(self.ragfile2)
         self.assertGreaterEqual(similarity, 0.0)
         self.assertLessEqual(similarity, 1.0)
+        similarity = self.ragfile1.jaccard(self.ragfile1)
+        self.assertEqual(similarity, 1.0)
 
     def test_hamming_similarity(self):
         similarity = self.ragfile1.hamming(self.ragfile2)
         self.assertGreaterEqual(similarity, 0.0)
         self.assertLessEqual(similarity, 1.0)
+        similarity = self.ragfile1.hamming(self.ragfile1)
+        self.assertEqual(similarity, 1.0)
 
     def test_cosine_similarity(self):
-        similarity_max = self.ragfile1.cosine(self.ragfile2, mode="max")
-        similarity_avg = self.ragfile1.cosine(self.ragfile2, mode="avg")
-        self.assertGreaterEqual(similarity_max, 0.0)
-        self.assertLessEqual(similarity_max, 1.0)
-        self.assertGreaterEqual(similarity_avg, 0.0)
-        self.assertLessEqual(similarity_avg, 1.0)
+        similarity = self.ragfile1.cosine(self.ragfile2)
+        self.assertGreaterEqual(similarity, 0.0)
+        self.assertLessEqual(similarity, 1.0)
+        similarity = self.ragfile1.cosine(self.ragfile1)
+        self.assertEqual(similarity, 1.0)
 
     def test_match_files(self):
         file_paths = ["path/to/ragfile1", "path/to/ragfile2"]
@@ -87,6 +85,18 @@ class TestRagFile(unittest.TestCase):
         self.assertIsInstance(results, list)
         self.assertTrue(len(results) <= 2)
 
+    def test_dumps_loads(self):
+        rf_ser = io.dumps(self.ragfile1)
+        rf = io.loads(rf_ser)
+        self.assertEqual(rf.header.dense_vector, self.ragfile1.header.dense_vector)
+        self.assertEqual(rf.header.scan_vector, self.ragfile1.header.scan_vector)
+        self.assertEqual(rf.header.dense_vector_dim, self.ragfile1.header.dense_vector_dim)
+        self.assertEqual(rf.header.scan_vector_dim, self.ragfile1.header.scan_vector_dim)
+        self.assertEqual(rf.header.scan_vector_dim, 4)
+        self.assertEqual(rf.header.dense_vector_dim, 4)
+        self.assertEqual(hash(io.dumps(rf)), hash(io.dumps(rf)))
+        self.assertEqual(rf.header.tokenizer_id, self.ragfile1.header.tokenizer_id)
+
 class TestMinHash(unittest.TestCase):
 
     def test_char(self):
@@ -97,9 +107,9 @@ class TestMinHash(unittest.TestCase):
 
     def test_word(self):
         text = "this is a test text"
-        signature = minhash.word(text, ngram=2, permute=128, seed=42)
+        signature = minhash.word(text, ngram=2, permute=256, seed=42)
         self.assertIsInstance(signature, list)
-        self.assertEqual(len(signature), 128)
+        self.assertEqual(len(signature), 256)
 
     def test_tokens(self):
         tokens = [1, 2, 3, 4]
@@ -116,4 +126,3 @@ class TestMinHash(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

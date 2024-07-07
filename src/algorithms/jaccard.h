@@ -12,7 +12,7 @@
  * @param vector_dim Dimension of the vectors.
  * @return The computed Jaccard similarity (between 0 and 1).
  */
-float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2, size_t vector_dim);
+float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2, uint16_t vector_dim);
 
 #endif // JACCARD_H
 

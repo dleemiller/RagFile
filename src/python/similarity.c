@@ -10,39 +10,57 @@
 // Methods for similarity calculations
 PyObject* PyRagFile_jaccard(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
-    int vec_num = 1;
-    if (!PyArg_ParseTuple(args, "O!|i", Py_TYPE(self), &other, &vec_num)) {
+    if (!PyArg_ParseTuple(args, "O!", &PyRagFileType, &other)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be a RagFile object");
         return NULL;
     }
 
-    VecInfo query_info = get_vec_info(self->rf, vec_num);
-    VecInfo candidate_info = get_vec_info(other->rf, vec_num);
+    uint16_t self_size = self->rf->header.scan_vector_dim;
+    uint16_t other_size = other->rf->header.scan_vector_dim;
 
-    if (query_info.type != MIN_HASH || candidate_info.type != MIN_HASH) {
-        PyErr_SetString(PyExc_ValueError, "Jaccard similarity requires MIN_HASH type vectors");
+    if (self_size != other_size) {
+        PyErr_SetString(PyExc_ValueError, "Scan vector dimensions must be equal");
         return NULL;
     }
 
-    float similarity = jaccard_similarity(query_info.vec, candidate_info.vec, fmin(query_info.dim, candidate_info.dim));
+    if (self->rf->header.scan_vector == NULL || other->rf->header.scan_vector == NULL) {
+        PyErr_SetString(PyExc_ValueError, "Scan vectors cannot be NULL");
+        return NULL;
+    }
+
+    float similarity = jaccard_similarity(self->rf->header.scan_vector, other->rf->header.scan_vector, self_size);
     return PyFloat_FromDouble(similarity);
 }
 
 PyObject* PyRagFile_hamming(PyRagFile* self, PyObject* args) {
     PyRagFile* other;
-    int vec_num = 1;
-    if (!PyArg_ParseTuple(args, "O!|i", Py_TYPE(self), &other, &vec_num)) {
+    if (!PyArg_ParseTuple(args, "O!", &PyRagFileType, &other)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be a RagFile object");
         return NULL;
     }
 
-    VecInfo query_info = get_vec_info(self->rf, vec_num);
-    VecInfo candidate_info = get_vec_info(other->rf, vec_num);
+    uint16_t self_size = self->rf->header.scan_vector_dim;
+    uint16_t other_size = other->rf->header.scan_vector_dim;
 
-    if (query_info.type != BINARY_EMBEDDING || candidate_info.type != BINARY_EMBEDDING) {
-        PyErr_SetString(PyExc_ValueError, "Hamming similarity requires BINARY_EMBEDDING type vectors");
+    if (self_size != other_size) {
+        PyErr_SetString(PyExc_ValueError, "Scan vector dimensions must be equal");
         return NULL;
     }
 
-    float similarity = hamming_similarity((const uint8_t*)query_info.vec, (const uint8_t*)candidate_info.vec, fmin(query_info.dim, candidate_info.dim));
+    if (self->rf->header.scan_vector == NULL || other->rf->header.scan_vector == NULL) {
+        PyErr_SetString(PyExc_ValueError, "Scan vectors cannot be NULL");
+        return NULL;
+    }
+
+    double similarity = hamming_similarity(self->rf->header.scan_vector, 
+                                           other->rf->header.scan_vector, 
+                                           self_size);
+    
+    if (similarity < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Error computing Hamming similarity");
+        return NULL;
+    }
+
     return PyFloat_FromDouble(similarity);
 }
 
@@ -118,9 +136,9 @@ PyObject* PyRagFile_match(PyRagFile* self, PyObject* args, PyObject* kwds) {
 
         int process_status;
         if (strcmp(method, "jaccard") == 0) {
-            process_status = process_file_jaccard(path, self->rf, heap, vec_num);
+            process_status = process_file_jaccard(path, self->rf, heap);
         } else if (strcmp(method, "hamming") == 0) {
-            process_status = process_file_hamming(path, self->rf, heap, vec_num);
+            process_status = process_file_hamming(path, self->rf, heap);
         } else {
             PyErr_SetString(PyExc_ValueError, "Invalid method specified");
             Py_DECREF(file_path);

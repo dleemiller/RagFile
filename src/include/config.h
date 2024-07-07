@@ -6,8 +6,8 @@
 
 #define MODEL_ID_SIZE 64
 #define METADATA_MAX_SIZE 1024
-#define MINHASH_SIZE 256
-#define DIMENSION 256
+#define SCAN_VEC_DIM 256
+#define DENSE_VEC_DIM 1024
 
 #ifndef BINARY_EMBEDDING_DIM
 #define BINARY_EMBEDDING_DIM 128 // Default dimension

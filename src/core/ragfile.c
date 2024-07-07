@@ -3,17 +3,17 @@
 #include <assert.h>
 #include "ragfile.h"
 #include "../include/config.h"
+#include "../include/float16.h"
 #include "../utils/file_io.h"
 #include "../utils/strdup.h"
 
 RagfileError ragfile_create(RagFile** rf, const char* text, 
-                            const uint32_t* vector1, uint16_t vector1_dim, 
-                            const uint32_t* vector2, uint16_t vector2_dim,
-                            VectorType vector1_type, VectorType vector2_type,
+                            const uint32_t* scan_vector, uint16_t scan_vector_dim, 
+                            const float16_t* dense_vector, uint16_t dense_vector_dim,
                             const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
                             uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim) {
-    if (!rf || !text || !vector1 || !vector2 || !embeddings || !tokenizer_id || !embedding_id) {
+    if (!rf || !text || !scan_vector || !dense_vector || !embeddings || !tokenizer_id || !embedding_id) {
         return RAGFILE_ERROR_INVALID_ARGUMENT;
     }
 
@@ -25,17 +25,15 @@ RagfileError ragfile_create(RagFile** rf, const char* text,
     // Initialize header
     (*rf)->header.magic = RAGFILE_MAGIC;
     (*rf)->header.version = RAGFILE_VERSION;
-    (*rf)->header.flags = 0;  // No flags set for now
-    (*rf)->header.vector1_type = vector1_type;
-    (*rf)->header.vector2_type = vector2_type;
-    (*rf)->header.vector1_dim = vector1_dim;
-    (*rf)->header.vector2_dim = vector2_dim;
+    (*rf)->header.flags = 0;
+    (*rf)->header.scan_vector_dim = scan_vector_dim;
+    (*rf)->header.dense_vector_dim = dense_vector_dim;
 
     // Initialize vectors with zeros and copy provided dimensions
-    memset((*rf)->header.vector1, 0, DIMENSION * sizeof(uint32_t));
-    memset((*rf)->header.vector2, 0, DIMENSION * sizeof(uint32_t));
-    memcpy((*rf)->header.vector1, vector1, vector1_dim * sizeof(uint32_t));
-    memcpy((*rf)->header.vector2, vector2, vector2_dim * sizeof(uint32_t));
+    memset((*rf)->header.scan_vector, 0, SCAN_VEC_DIM * sizeof(uint32_t));
+    memset((*rf)->header.dense_vector, 0, DENSE_VEC_DIM * sizeof(float16_t));
+    memcpy((*rf)->header.scan_vector, scan_vector, scan_vector_dim * sizeof(uint32_t));
+    memcpy((*rf)->header.dense_vector, dense_vector, dense_vector_dim * sizeof(uint32_t));
 
     memset((*rf)->header.tokenizer_id, 0, MODEL_ID_SIZE);
     strncpy((*rf)->header.tokenizer_id, tokenizer_id, MODEL_ID_SIZE - 1);

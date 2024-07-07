@@ -1,6 +1,6 @@
 #include "jaccard.h"
 
-float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2, size_t vector_dim) {
+float jaccard_similarity(const uint32_t* mh1, const uint32_t* mh2, uint16_t vector_dim) {
     if (!mh1 || !mh2 || vector_dim == 0) {
         return 0.0f;
     }

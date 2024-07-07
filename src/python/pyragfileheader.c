@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "pyragfileheader.h"
+#include "../include/float16.h"
 
 // Deallocate PyRagFileHeader
 void PyRagFileHeader_dealloc(PyRagFileHeader* self) {
@@ -28,32 +29,24 @@ static PyObject* PyRagFileHeader_get_version(PyRagFileHeader* self, void* closur
 }
 
 static PyObject* PyRagFileHeader_get_flags(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong((unsigned long)self->header->flags);
+    return PyLong_FromUnsignedLongLong((unsigned long long)self->header->flags);
 }
 
-static PyObject* PyRagFileHeader_get_vector1_type(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong((unsigned long)self->header->vector1_type);
+static PyObject* PyRagFileHeader_get_scan_vector_dim(PyRagFileHeader* self, void* closure) {
+    return PyLong_FromUnsignedLong((unsigned long)self->header->scan_vector_dim);
 }
 
-static PyObject* PyRagFileHeader_get_vector2_type(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong((unsigned long)self->header->vector2_type);
+static PyObject* PyRagFileHeader_get_dense_vector_dim(PyRagFileHeader* self, void* closure) {
+    return PyLong_FromUnsignedLong((unsigned long)self->header->dense_vector_dim);
 }
 
-static PyObject* PyRagFileHeader_get_vector1_dim(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong((unsigned long)self->header->vector1_dim);
-}
-
-static PyObject* PyRagFileHeader_get_vector2_dim(PyRagFileHeader* self, void* closure) {
-    return PyLong_FromUnsignedLong((unsigned long)self->header->vector2_dim);
-}
-
-static PyObject* PyRagFileHeader_get_vector1(PyRagFileHeader* self, void* closure) {
-    PyObject* vector = PyList_New(DIMENSION);
+static PyObject* PyRagFileHeader_get_scan_vector(PyRagFileHeader* self, void* closure) {
+    PyObject* vector = PyList_New(self->header->scan_vector_dim);
     if (vector == NULL) {
         return PyErr_NoMemory();
     }
-    for (int i = 0; i < DIMENSION; i++) {
-        PyObject* item = PyLong_FromUnsignedLong(self->header->vector1[i]);
+    for (int i = 0; i < self->header->scan_vector_dim; i++) {
+        PyObject* item = PyLong_FromUnsignedLong(self->header->scan_vector[i]);
         if (!item) {
             Py_DECREF(vector);
             return PyErr_NoMemory();
@@ -63,21 +56,27 @@ static PyObject* PyRagFileHeader_get_vector1(PyRagFileHeader* self, void* closur
     return vector;
 }
 
-static PyObject* PyRagFileHeader_get_vector2(PyRagFileHeader* self, void* closure) {
-    PyObject* vector = PyList_New(DIMENSION);
+static PyObject* PyRagFileHeader_get_dense_vector(PyRagFileHeader* self, void* closure) {
+    PyObject* vector = PyList_New(self->header->dense_vector_dim);
     if (vector == NULL) {
         return PyErr_NoMemory();
     }
-    for (int i = 0; i < DIMENSION; i++) {
-        PyObject* item = PyLong_FromUnsignedLong(self->header->vector2[i]);
+    
+    for (int i = 0; i < self->header->dense_vector_dim; i++) {
+        float original_value = float16_to_float32(self->header->dense_vector[i]);
+        double d = (double)original_value;
+        PyObject* item = PyFloat_FromDouble(d);
         if (!item) {
             Py_DECREF(vector);
             return PyErr_NoMemory();
         }
+        
         PyList_SET_ITEM(vector, i, item);
     }
+    
     return vector;
 }
+
 
 static PyObject* PyRagFileHeader_get_text_size(PyRagFileHeader* self, void* closure) {
     return PyLong_FromUnsignedLong((unsigned long)self->header->text_size);
@@ -115,12 +114,10 @@ static PyObject* PyRagFileHeader_get_embedding_id(PyRagFileHeader* self, void* c
 static PyGetSetDef PyRagFileHeader_getsetters[] = {
     {"version", (getter)PyRagFileHeader_get_version, NULL, "Get the version", NULL},
     {"flags", (getter)PyRagFileHeader_get_flags, NULL, "Get the flags", NULL},
-    {"vector1_type", (getter)PyRagFileHeader_get_vector1_type, NULL, "Get vector1 type", NULL},
-    {"vector2_type", (getter)PyRagFileHeader_get_vector2_type, NULL, "Get vector2 type", NULL},
-    {"vector1_dim", (getter)PyRagFileHeader_get_vector1_dim, NULL, "Get vector1 dimension", NULL},
-    {"vector2_dim", (getter)PyRagFileHeader_get_vector2_dim, NULL, "Get vector2 dimension", NULL},
-    {"vector1", (getter)PyRagFileHeader_get_vector1, NULL, "Get vector1", NULL},
-    {"vector2", (getter)PyRagFileHeader_get_vector2, NULL, "Get vector2", NULL},
+    {"scan_vector_dim", (getter)PyRagFileHeader_get_scan_vector_dim, NULL, "Get scan_vector dimension", NULL},
+    {"dense_vector_dim", (getter)PyRagFileHeader_get_dense_vector_dim, NULL, "Get dense_vector dimension", NULL},
+    {"scan_vector", (getter)PyRagFileHeader_get_scan_vector, NULL, "Get scan_vector", NULL},
+    {"dense_vector", (getter)PyRagFileHeader_get_dense_vector, NULL, "Get dense_vector", NULL},
     {"text_size", (getter)PyRagFileHeader_get_text_size, NULL, "Get text size", NULL},
     {"metadata_version", (getter)PyRagFileHeader_get_metadata_version, NULL, "Get metadata version", NULL},
     {"metadata_size", (getter)PyRagFileHeader_get_metadata_size, NULL, "Get metadata size", NULL},

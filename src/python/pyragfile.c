@@ -1,5 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <stdio.h>
+#include "../include/float16.h"
 #include "pyragfile.h"
 #include "pyragfileheader.h"
 #include "similarity.h"
@@ -56,35 +58,33 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
     const char* tokenizer_id = NULL;
     const char* embedding_id = NULL;
     uint16_t metadata_version = 0;
-    int vector1_type, vector2_type;
-    PyObject* vector1_obj = NULL;
-    PyObject* vector2_obj = NULL;
+    PyObject* scan_vector_obj = NULL;
+    PyObject* dense_vector_obj = NULL;
     int is_loaded = 0;
 
-    static char* kwlist[] = {"text", "token_ids", "embeddings", "extended_metadata", "tokenizer_id", "embedding_id", "metadata_version", "vector1_type", "vector2_type", "vector1", "vector2", "is_loaded", NULL};
+    static char* kwlist[] = {"text", "token_ids", "embeddings", "extended_metadata", "tokenizer_id", "embedding_id", "metadata_version", "scan_vector", "dense_vector", "is_loaded", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sOOsssHiiOOi", kwlist,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sOOsssHOOi", kwlist,
                                      &text, &token_ids_obj, &embeddings_obj, &extended_metadata,
                                      &tokenizer_id, &embedding_id, &metadata_version,
-                                     &vector1_type, &vector2_type,
-                                     &vector1_obj, &vector2_obj,
+                                     &scan_vector_obj, &dense_vector_obj,
                                      &is_loaded)) {
         return -1;
     }
 
-    if (!is_loaded && (!text || !token_ids_obj || !embeddings_obj || !tokenizer_id || !embedding_id || !vector1_obj || !vector2_obj)) {
+    if (!is_loaded && (!text || !token_ids_obj || !embeddings_obj || !tokenizer_id || !embedding_id || !scan_vector_obj || !dense_vector_obj)) {
         PyErr_SetString(PyExc_ValueError, "Missing required arguments");
         return -1;
     }
 
     uint32_t* token_ids = NULL;
-    uint32_t* vector1 = NULL;
-    uint32_t* vector2 = NULL;
+    uint32_t* scan_vector = NULL;
+    float16_t* dense_vector = NULL;
     float* flattened_embeddings = NULL;
     size_t total_floats = 0;
     Py_ssize_t num_tokens = 0;
-    uint16_t vector1_dim = 0;
-    uint16_t vector2_dim = 0;
+    uint16_t scan_vector_dim = 0;
+    uint16_t dense_vector_dim = 0;
     uint32_t num_embeddings = 0;
     uint32_t embedding_dim = 0;
 
@@ -106,56 +106,63 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
             token_ids[i] = (uint32_t)PyLong_AsUnsignedLong(item);
         }
 
-        // Vector conversion
-        vector1_dim = PyList_Size(vector1_obj);
-        vector2_dim = PyList_Size(vector2_obj);
-        vector1 = (uint32_t*)calloc(DIMENSION, sizeof(uint32_t));
-        vector2 = (uint32_t*)calloc(DIMENSION, sizeof(uint32_t));
-        if (!vector1 || !vector2) {
+        // Scan vector conversion
+        scan_vector_dim = PyList_Size(scan_vector_obj);
+        scan_vector = (uint32_t*)calloc(SCAN_VEC_DIM, sizeof(uint32_t));
+        if (!scan_vector) {
             free(token_ids);
             PyErr_NoMemory();
             return -1;
         }
-        for (size_t i = 0; i < vector1_dim; i++) {
-            PyObject* item = PyList_GetItem(vector1_obj, i);
+        for (size_t i = 0; i < scan_vector_dim; i++) {
+            PyObject* item = PyList_GetItem(scan_vector_obj, i);
             if (!PyLong_Check(item)) {
                 free(token_ids);
-                free(vector1);
-                free(vector2);
-                PyErr_SetString(PyExc_TypeError, "Vectors must be lists of integers");
+                free(scan_vector);
+                PyErr_SetString(PyExc_TypeError, "Scan vector must be a list of integers");
                 return -1;
             }
-            vector1[i] = (uint32_t)PyLong_AsUnsignedLong(item);
+            scan_vector[i] = (uint32_t)PyLong_AsUnsignedLong(item);
         }
-        for (size_t i = 0; i < vector2_dim; i++) {
-            PyObject* item = PyList_GetItem(vector2_obj, i);
-            if (!PyLong_Check(item)) {
+
+        // Dense vector conversion
+        dense_vector_dim = PyList_Size(dense_vector_obj);
+        dense_vector = (float16_t*)calloc(DENSE_VEC_DIM, sizeof(float16_t));
+        if (!dense_vector) {
+            free(token_ids);
+            free(scan_vector);
+            PyErr_NoMemory();
+            return -1;
+        }
+        for (size_t i = 0; i < dense_vector_dim; i++) {
+            PyObject* item = PyList_GetItem(dense_vector_obj, i);
+            if (!PyFloat_Check(item)) {
                 free(token_ids);
-                free(vector1);
-                free(vector2);
-                PyErr_SetString(PyExc_TypeError, "Vectors must be lists of integers");
+                free(scan_vector);
+                free(dense_vector);
+                PyErr_SetString(PyExc_TypeError, "Dense vector must be a list of floats");
                 return -1;
             }
-            vector2[i] = (uint32_t)PyLong_AsUnsignedLong(item);
+            double float_value = PyFloat_AsDouble(item);
+            dense_vector[i] = float32_to_float16(float_value);
         }
 
         // Embeddings preparation
         if (!prepare_embeddings(embeddings_obj, &flattened_embeddings, &total_floats, &num_embeddings, &embedding_dim)) {
             free(token_ids);
-            free(vector1);
-            free(vector2);
+            free(scan_vector);
+            free(dense_vector);
             return -1;
         }
 
         // RagFile creation
         RagfileError error = ragfile_create(&self->rf, text, 
-                                            vector1, vector1_dim, vector2, vector2_dim,
-                                            vector1_type, vector2_type,
+                                            scan_vector, scan_vector_dim, dense_vector, dense_vector_dim,
                                             flattened_embeddings, total_floats, extended_metadata,
                                             tokenizer_id, embedding_id, metadata_version, num_embeddings, embedding_dim);
         free(token_ids);
-        free(vector1);
-        free(vector2);
+        free(scan_vector);
+        free(dense_vector);
         free(flattened_embeddings);
 
         if (error != RAGFILE_SUCCESS) {
@@ -169,7 +176,6 @@ static int PyRagFile_init(PyRagFile* self, PyObject* args, PyObject* kwds) {
 }
 
 // Getter methods for RagFile
-
 static PyObject* PyRagFile_get_text(PyRagFile* self, void* closure) {
     return PyUnicode_FromString(self->rf->text);
 }

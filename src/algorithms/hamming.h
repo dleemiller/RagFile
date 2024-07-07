@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-int hamming_distance(const uint8_t *vec1, const uint8_t *vec2, size_t size);
-double hamming_similarity(const uint8_t *vec1, const uint8_t *vec2, size_t size);
+int hamming_distance(const uint32_t *vec1, const uint32_t *vec2, uint16_t size);
+double hamming_similarity(const uint32_t *vec1, const uint32_t *vec2, uint16_t size);
 
 #endif // HAMMING_H
 

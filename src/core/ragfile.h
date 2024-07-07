@@ -2,6 +2,7 @@
 #define RAGFILE_H
 
 #include "../include/config.h"
+#include "../include/float16.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -15,23 +16,16 @@ typedef enum {
     RAGFILE_ERROR_INVALID_ARGUMENT
 } RagfileError;
 
-typedef enum {
-    BINARY_EMBEDDING,
-    MIN_HASH,
-    TOKEN_ID
-} VectorType;
 
 #pragma pack(push, 1)
 typedef struct {
     uint32_t magic;
     uint16_t version;
-    uint32_t flags;
-    uint16_t vector1_type;
-    uint16_t vector2_type;
-    uint16_t vector1_dim;
-    uint16_t vector2_dim;
-    uint32_t vector1[DIMENSION];
-    uint32_t vector2[DIMENSION];
+    uint64_t flags;
+    uint16_t scan_vector_dim;
+    uint16_t dense_vector_dim;
+    uint32_t scan_vector[SCAN_VEC_DIM];
+    float16_t dense_vector[DENSE_VEC_DIM];
     uint16_t text_hash;
     uint32_t text_size;
     uint16_t metadata_version;
@@ -52,9 +46,8 @@ typedef struct {
 } RagFile;
 
 RagfileError ragfile_create(RagFile** rf, const char* text, 
-                            const uint32_t* vector1, uint16_t vector1_dim, 
-                            const uint32_t* vector2, uint16_t vector2_dim,
-                            VectorType vector1_type, VectorType vector2_type,
+                            const uint32_t* scan_vector, uint16_t scan_vector_dim, 
+                            const float16_t* dense_vector, uint16_t dense_vector_dim,
                             const float* embeddings, uint32_t embedding_size, const char* extended_metadata,
                             const char* tokenizer_id, const char* embedding_id, 
                             uint16_t extended_metadata_version, uint16_t num_embeddings, uint16_t embedding_dim);

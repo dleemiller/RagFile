@@ -206,18 +206,6 @@ PyMODINIT_FUNC PyInit_minhash(void) {
         return NULL;
     }
 
-    // Define VectorType Enum
-    PyObject* vectype = Py_BuildValue("{s:i, s:i, s:i}", "BINARY_EMBEDDING", BINARY_EMBEDDING, "MIN_HASH", MIN_HASH, "TOKEN_ID", TOKEN_ID);
-    if (vectype == NULL) {
-        return NULL;
-    }
-
-    if (PyModule_AddObject(m, "VectorType", vectype) < 0) {
-        Py_DECREF(vectype);
-        Py_DECREF(m);
-        return NULL;
-    }
-
     return m;
 }
 
